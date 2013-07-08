@@ -105,7 +105,6 @@ def request(connection, cmd, params=None, headers=None, raw=False,
                                              host=request.host,
                                              path=request.path)
 
-    tmpHeaders = request.headers
     request.authorize(connection=connection)
 
     result = handler(url, params=params, headers=request.headers, data=data)

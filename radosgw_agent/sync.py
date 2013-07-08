@@ -1,10 +1,5 @@
 import boto
-import datetime
-import json
 import multiprocessing
-import random
-import string
-import threading
 
 from . import worker
 from . import client

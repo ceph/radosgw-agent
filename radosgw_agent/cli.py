@@ -1,6 +1,5 @@
 import argparse
 import logging
-import sys
 
 from . import sync
 

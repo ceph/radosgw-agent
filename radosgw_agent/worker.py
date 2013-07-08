@@ -1,10 +1,19 @@
 import boto
-import multiprocessing
+import datetime
+import json
 import logging
+import multiprocessing
+import os
+import threading
 
 from . import client
 
 log = logging.getLogger(__name__)
+
+class metadata_type:
+    USER            = 0
+    BUCKET          = 1
+    BUCKET_INSTANCE = 2
 
 class Worker(multiprocessing.Process):
     """sync worker to run in its own process"""
@@ -22,14 +31,12 @@ class Worker(multiprocessing.Process):
         self.source_zone = source_zone
         self.dest_zone = dest_zone
         self.processID = processID
-        self.processName= 'process-' + str(self.processID)
+        self.processName = 'process-' + str(self.processID)
         self.work_queue = work_queue
         self.result_queue = result_queue
         self.log_lock_time = log_lock_time
 
-        # generates an N character random string from letters and digits 16 digits for now
-        self.local_lock_id = \
-          ''.join(random.choice(string.ascii_letters + string.digits) for x in range(16))
+        self.local_lock_id = os.getpid() # plus a few random chars
 
         # construct the two connection objects
         self.source_conn = boto.s3.connection.S3Connection(
@@ -56,13 +63,13 @@ class Worker(multiprocessing.Process):
         log.debug('acquiring lock on shard %d', shard_num)
 
         retVal, _ = client.request(conn, ['log', 'lock'],
-            {'type': self._type, 'id': object_num, 'length': log_lock_time,
+            {'type': self._type, 'id': shard_num, 'length': self.log_lock_time,
              'zone-id': zone_id, 'locker-id': lock_id})
 
         if 200 != retVal:
             log.warn('acquire_log_lock for shard {0} in '
                      'zone {1} failed with status {2}',
-                     bucket_num, zode_id, retVal)
+                     shard_num, zone_id, retVal)
             # clear this flag for the next pass
             self.relock_log = False
             return retVal
@@ -93,14 +100,14 @@ class Worker(multiprocessing.Process):
             log.warn('data log unlock for zone %s failed, '
                      'returned http code %d', zone_id, retVal)
         log.debug('data log unlock for zone %s returned %d',
-                  zode_id, retVal)
+                  zone_id, retVal)
 
         return retVal
 
 
 class DataWorker(Worker):
 
-    def __init__(*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(self, DataWorker).__init__(*args, **kwargs)
         self._type = 'data'
 
@@ -112,11 +119,9 @@ class DataWorker(Worker):
 
         if 200 != ret:
             print 'data list failed, returned http code: ', ret
-        elif debug_commands:
-            print 'data list returned: ', ret
 
     # get the updates for this bucket and sync the data across
-    def sync_bucket(self, shard, bucket_name):
+    def sync_bucket(self, shard_num, bucket_name):
         retVal = 200
         # There is not an explicit bucket-index log lock. This is coverred
         # by the lock on the datalog for this shard
@@ -135,9 +140,6 @@ class DataWorker(Worker):
             print 'get bucket-index for bucket ', bucket_name, \
                   ' failed, returned http code: ', retVal
             return retVal
-        elif debug_commands:
-            print 'get bucket-index for bucket ', bucket_name, \
-                  ' returned http code: ', retVal
 
         bucket_events = out()
         print 'bilog for bucket ', bucket_name, ' has ', \
@@ -152,9 +154,9 @@ class DataWorker(Worker):
             if self.relock_log:
                 retVal = self.acquire_log_lock(self.source_conn, \
                                            self.local_lock_id, \
-                                           self.source_zone, data_log_shard)
+                                           self.source_zone, shard_num)
                 if 200 != retVal:
-                    print 'error acquiring lock for bucket ', bucket, \
+                    print 'error acquiring lock for shard ', shard_num, \
                           ' lock_id: ', self.local_lock_id, \
                           ' in zone ', self.source_zone, \
                           ' in process_entries_for_data_log_shard(). ' \
@@ -196,9 +198,6 @@ class DataWorker(Worker):
                       ' failed, returned http code: ', retVal, \
                         '. Bailing'
                 return retVal
-            elif debug_commands:
-                print 'copy of object ', event['object'], \
-                        ' returned http code: ', retVal
 
         return retVal
 
@@ -230,7 +229,7 @@ class DataWorker(Worker):
 
         return data_entries
 
-    def process_entries_for_data_log_shard(self, data_log_shard, entries):
+    def process_entries_for_data_log_shard(self, shard_num, entries):
         retVal = 200
 
         # we need this due to a bug in rgw that isn't auto-filling in sensible
@@ -247,9 +246,9 @@ class DataWorker(Worker):
             if self.relock_log:
                 retVal = self.acquire_log_lock(self.source_conn, \
                                            self.local_lock_id, \
-                                           self.source_zone, data_log_shard)
+                                           self.source_zone, shard_num)
                 if 200 != retVal:
-                    print 'error acquiring lock for bucket ', bucket, \
+                    print 'error acquiring lock for shard ', shard_num, \
                           ' lock_id: ', self.local_lock_id, \
                           ' in zone ', self.source_zone, \
                           ' in process_entries_for_data_log_shard(). ' \
@@ -260,7 +259,7 @@ class DataWorker(Worker):
                     return retVal
 
 
-                retVal = self.sync_bucket(data_log_shard, bucket_name)
+                retVal = self.sync_bucket(shard_num, bucket_name)
 
                 if 200 != retVal:
                     print 'sync_bucket() failed for bucket ', bucket_name, \
@@ -269,31 +268,25 @@ class DataWorker(Worker):
                     # if there is an error, release the log lock and bail
                     retVal = self.release_log_lock(self.source_conn, \
                                               self.local_lock_id, \
-                                              self.source_zone, data_log_shard)
+                                              self.source_zone, shard_num)
                     return retVal
-                elif debug_commands:
-                    print 'sync_bucket() for bucket ', bucket_name, \
-                          ' returned http code: ', retVal
 
         # TODO trim the log and then unlock it
         # trim the log for this bucket now that its objects are synced
         (retVal, out) = client.request(self.source_conn,
-                  ['log', 'trim', 'id=' + str(data_log_shard)],
-                  {"id":data_log_shard, "type":"data", "start-time":really_old_time,
-                   "end-time":sync_start_time})
+                  ['log', 'trim', 'id=' + str(shard_num)],
+                  {'id': shard_num, 'type': 'data',
+                   'start-time': really_old_time, 'end-time': sync_start_time})
 
         if 200 != retVal:
-            print 'data log trim for shard ', shard, ' returned http code ', retVal
+            print 'data log trim for shard ', shard_num, ' returned http code ', retVal
             # normally we would unlock and return a avlue here,
             # but since that's going to happen next, we effectively just fall through
             # into it
 
-        elif debug_commands:
-            print 'data log trim shard ',shard, ' returned http code ', retVal
-
         retVal = self.release_log_lock(self.source_conn, \
                                        self.local_lock_id, \
-                                       self.source_zone, data_log_shard)
+                                       self.source_zone, shard_num)
         return retVal
 
 
@@ -316,24 +309,22 @@ class DataWorker(Worker):
 
             if 200 != retVal:
                 print 'acquire_log_lock() failed, returned http code: ', retVal
-                self.result_queue.put((self.processID, data_log_shard, retVal))
+                self.result_queue.put((self.processID, shard_num, retVal))
                 continue
-            elif debug_commands:
-                print 'acquire_log_lock() returned http code: ', retVal
 
             # get the log for this data log shard
             (retVal, out) = client.request(self.source_conn,
-                                   ['log', 'list', 'id=' + str(data_log_shard)],
-                                   {"type":"data", "id":data_log_shard})
+                                   ['log', 'list', 'id=' + str(shard_num)],
+                                   {'type': 'data', 'id': shard_num})
 
             if 200 != retVal:
-                print 'data list for shard ', data_log_shard, \
+                print 'data list for shard ', shard_num, \
                       ' failed, returned http code: ', retVal
                 # we hit an error getting the data to sync.
                 # Bail and unlock the log
                 self.release_log_lock(self.source_conn, self.local_lock_id, \
                                       self.source_zone, shard_num)
-                self.result_queue.put((self.processID, data_log_shard, retVal))
+                self.result_queue.put((self.processID, shard_num, retVal))
                 continue
             log.debug('data list for shard {0} returned {1}', shard_num, retVal)
 
@@ -346,15 +337,15 @@ class DataWorker(Worker):
             # to be synced
             buckets_to_sync = self.sort_and_filter_entries(log_entry_list)
 
-            retVal = self.process_entries_for_data_log_shard(data_log_shard, \
+            retVal = self.process_entries_for_data_log_shard(shard_num, \
                                                              buckets_to_sync)
 
-            self.result_queue.put((self.processID, data_log_shard, '200'))
+            self.result_queue.put((self.processID, shard_num, '200'))
 
 
 class MetadataWorker(Worker):
 
-    def __init__(*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(self, MetadataWorker).__init__(*args, **kwargs)
         self._type = 'metadata'
 
@@ -376,18 +367,18 @@ class MetadataWorker(Worker):
 
     # copies the curret metadata for a user from the master side to the
     # non-master side
-    def add_entry_to_remote(self, entry_name, md_type):
+    def add_entry_to_remote(self, entry, md_type):
 
         # create an empty dict and pull out the name to use as an argument for next call
         args = {}
         if md_type == metadata_type.USER:
-            args['key'] = src_acct()['data']['user_id']
+            args['key'] = entry['data']['user_id']
         else:
             #args['key'] = src_acct()['data']['bucket_info']['bucket']['name']
-            args['key'] = src_acct()['data']['bucket']['name']
+            args['key'] = entry['data']['bucket']['name']
 
         # json encode the data
-        outData = json.dumps(src_acct())
+        outData = json.dumps(entry)
 
         type_ = 'bucket'
         if md_type == metadata_type.USER:
@@ -411,10 +402,6 @@ class MetadataWorker(Worker):
         if 200 != retVal:
             print 'delete_remote_entry() failed for entry ', entry_name, '; ', \
                       retVal, ' was returned'
-            return retVal
-        elif debug_commands:
-            print 'delete_remote_entry() for entry ', entry_name, '; ', \
-                      ' returned ', retVal
 
         return retVal
 
@@ -448,31 +435,18 @@ class MetadataWorker(Worker):
                 # if there is, then only add this one if the ver is higher
                 # exclude writes since they aren't complete yet
                 if metadata_entries[key] < ver and status != 'write':
-                    metadata_entries[key] = section, ver, status
+                    metadata_entries[key] = entry
             else: # if not, just add this entry
-                metadata_entries[key] = section, ver, status
+                metadata_entries[key] = entry
 
         # sync each entry / tag pair
         # bail on any user where a non-200 status is returned
-        for key, value in metadata_entries.iteritems():
+        for key, entry in metadata_entries.iteritems():
             # TODO: use separate thread for lock renewal, and check
             # its status here instead of sending another request
-            if self.relock_log:
-                retVal = self.acquire_log_lock(self.source_conn,
-                                               self.local_lock_id,
-                                               self.source_zone, shard_num)
-            if 200 != retVal:
-                print 'error acquiring lock for shard ', shard_num,
-                      ' lock_id: ', self.local_lock_id,
-                      ' in zone ', self.source_zone,
-                      ' in process_entries(). Returned http code ', retVal
-
-                # log unlocking and adding the return value to the
-                # result queue will be handled by the calling function
-                return retVal
-
             name, tag = key
-            section, ver, status = value
+            section = entry['section']
+            status = entry['data']['status']['status']
             try:
                 md_type = {
                     'user': metadata_type.USER,
@@ -480,14 +454,14 @@ class MetadataWorker(Worker):
                     'bucket.instance': metadata_type.BUCKET_INSTANCE
                     }[section]
             except KeyError:
-                LOG.error('found unknown metadata type "%s", bailing', section)
+                log.error('found unknown metadata type "%s", bailing', section)
                 return 500
 
             if status == 'remove':
                 retVal = self.delete_meta_entry(self.dest_conn, name, md_type,
                                                 tag)
             elif status == 'complete':
-                    retVal = self.add_remote_entry(name, md_type, tag)
+                retVal = self.add_entry_to_remote(name, md_type, tag)
             else:
                 print 'doing something???? to ', name, ' section: ', status
                 retVal = 500
@@ -504,13 +478,11 @@ class MetadataWorker(Worker):
         while True:
             shard_num = self.work_queue.get()
             if shard_num is None:
-                if debug_commands:
-                    print 'process ', self.processName, ' is done. Exiting'
+                log.info('process %s is done. Exiting', self.processName)
                 break
 
-            if debug_commands:
-                print shard_num, ' is being processed by process ', \
-                      self.processName
+            log.info('%s is processing shard number %d',
+                     self.processName, shard_num)
 
             # we need this due to a bug in rgw that isn't auto-filling in
             # sensible defaults when start-time is omitted
@@ -562,8 +534,6 @@ class MetadataWorker(Worker):
                                       self.source_zone, shard_num)
                 self.result_queue.put((self.processID, shard_num, retVal))
                 continue
-            elif debug_commands:
-                print 'process_entries() returned http code ', retVal
 
             # trim the log for this shard now that all the users are synched
             # this should only occur if no users threw errors
@@ -580,9 +550,6 @@ class MetadataWorker(Worker):
                                       self.source_zone, shard_num)
                 self.result_queue.put((self.processID, shard_num, retVal))
                 continue
-            elif debug_commands:
-                print 'log trim for shard ', shard_num, \
-                      ' returned http code ', retVal
 
             # finally, unlock the log
             self.release_log_lock(self.source_conn, self.local_lock_id, \
@@ -590,6 +557,5 @@ class MetadataWorker(Worker):
 
             self.result_queue.put((self.processID, shard_num, retVal))
 
-            if debug_commands:
-                print shard_num, ' is done being processed by process ',
-                self.processName
+            log.info('%s finished processing shard %d',
+                     self.processName, shard_num)
