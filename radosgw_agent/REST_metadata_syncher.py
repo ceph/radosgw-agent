@@ -35,7 +35,7 @@ class metadata_type:
     BUCKET_INSTANCE = 3
 
 # class for synching all of the metadata between two zones
-class REST_metadata_syncher:
+class MetadataSyncer:
     logging.basicConfig(filename='boto_metadata_syncher.log', 
                         level=logging.DEBUG)
     log = logging.getLogger(__name__)
@@ -88,10 +88,10 @@ class REST_metadata_syncher:
         # create the processes that will do the work
         for i in xrange(num_workers):
             process = \
-              REST_metadata_syncher_worker(workerID, workQueue, resultQueue, \
-                          log_lock_time, source_access_key, source_secret_key, \
-                          source_host, source_zone, dest_access_key, \
-                          dest_secret_key, dest_host, dest_zone)
+              Worker(workerID, workQueue, resultQueue,
+                     log_lock_time, source_access_key, source_secret_key,
+                     source_host, source_zone, dest_access_key,
+                     dest_secret_key, dest_host, dest_zone)
             process.start()
             processes.append(process)
             workerID += 1
@@ -116,22 +116,8 @@ class REST_metadata_syncher:
                       ' exited with status ', retVal
 
 
-class REST_metadata_syncher_worker(multiprocessing.Process):
+class Worker(multiprocessing.Process):
     """metadata sync worker to run in its own process"""
-
-    source_conn = None
-    dest_conn = None
-    source_zone = None
-    dest_zone = None
-    local_lock_id = None
-    rest_factory = None
-    processID = None
-    processName = None
-    work_queue = None
-    result_queue = None
-    relock_log = True
-    relock_timer = None
-    log_lock_time = None
 
     # sleep the prescribed amount of time and then set a bool to true.
     def flip_log_lock(self):

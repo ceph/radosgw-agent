@@ -1,4 +1,3 @@
-
 import boto
 import logging
 import requests
@@ -69,25 +68,11 @@ def _get_resource(cmd):
 """
 Adapted from the build_request() method of boto.connection
 """
-def _build_admin_request(conn, cmd, method, resource='', headers=None,
-                        data=None, query_args=None, params=None):
-    path = conn.calling_format.build_path_base('admin', resource)
-    auth_path = conn.calling_format.build_auth_path('admin', resource)
-    host = conn.calling_format.build_host(conn.server_name(), 'admin')
 
-    if query_args:
-        path += '?' + query_args
-        boto.log.debug('path=%s' % path)
-        auth_path += '?' + query_args
-        boto.log.debug('auth_path=%s' % auth_path)
-
-    return AWSAuthConnection.build_base_http_request(
-        conn, method, path, auth_path, params, headers, data, host)
-
-def _build_request(conn, cmd, method, resource = '', headers=None,
-                  data=None, query_args=None, params=None):
-    path = conn.calling_format.build_path_base('', resource)
-    auth_path = conn.calling_format.build_auth_path('', resource)
+def _build_request(conn, cmd, method, basepath='', resource = '', headers=None,
+                   data=None, query_args=None, params=None):
+    path = conn.calling_format.build_path_base(basepath, resource)
+    auth_path = conn.calling_format.build_auth_path(basepath, resource)
     host = conn.calling_format.build_host(conn.server_name(), '')
 
     if query_args:
@@ -100,7 +85,7 @@ def _build_request(conn, cmd, method, resource = '', headers=None,
         conn, method, path, auth_path, params, headers, data, host)
 
 def request(connection, cmd, params=None, headers=None, raw=False,
-            data='', admin=True):
+            data=None, admin=True):
     if headers is None:
         headers = {}
 
@@ -109,18 +94,12 @@ def request(connection, cmd, params=None, headers=None, raw=False,
     method, handler = _get_cmd_method_and_handler(cmd)
     resource, query_args = _get_resource(cmd)
 
-    if admin:
-        request = _build_admin_request(connection, cmd, method, resource,
-                                       query_args=query_args,
-                                       headers=headers,
-                                       data=data,
-                                       params=params)
-    else:
-        request = _build_request(connection, cmd, method, resource,
-                                 query_args=query_args,
-                                 headers=headers,
-                                 data=data,
-                                 params=params)
+    basepath = 'admin' if admin else ''
+    request = _build_request(connection, cmd, method, resource, basepath,
+                             query_args=query_args,
+                             headers=headers,
+                             data=data,
+                             params=params)
 
     url = '{protocol}://{host}{path}'.format(protocol=request.protocol,
                                              host=request.host,
@@ -129,10 +108,7 @@ def request(connection, cmd, params=None, headers=None, raw=False,
     tmpHeaders = request.headers
     request.authorize(connection=connection)
 
-    if data:
-        result = handler(url, params=params, headers=request.headers, data=data)
-    else:
-        result = handler(url, params=params, headers=request.headers)
+    result = handler(url, params=params, headers=request.headers, data=data)
 
     if raw:
         return result.status_code, result.txt
