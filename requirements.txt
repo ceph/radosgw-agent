@@ -1,0 +1,3 @@
+argparse
+boto ==2.2.2
+requests
