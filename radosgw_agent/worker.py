@@ -363,7 +363,7 @@ class MetadataWorker(Worker):
         # get current info for this entry
         if md_type == metadata_type.USER:
             retVal, _ = self.client.request(conn,
-                                ['user', 'delete', entry_name], {}, admin=True)
+                                ['user', 'delete', entry_name], {})
         else:
             retVal, _ = self.client.request(conn,
                                 ['bucket', 'delete', entry_name], {}, admin=False)
@@ -378,21 +378,6 @@ class MetadataWorker(Worker):
     # non-master side
     def add_entry_to_remote(self, entry_name, md_type):
 
-        # get current info for this entry
-        if md_type == metadata_type.USER:
-            (retVal, src_acct) = self.client.request(self.source_conn,
-                                ['metadata', 'metaget', 'user'],
-                                {'key':entry_name})
-        else:
-            (retVal, src_acct) = self.client.request(self.source_conn,
-                                ['metadata', 'metaget', 'bucket'],
-                                {'key':entry_name})
-
-        if 200 != retVal:
-            print 'add_entry_to_remote source side metadata (GET) failed, ',\
-                  'code: ', retVal
-            return retVal
-
         # create an empty dict and pull out the name to use as an argument for next call
         args = {}
         if md_type == metadata_type.USER:
@@ -404,83 +389,16 @@ class MetadataWorker(Worker):
         # json encode the data
         outData = json.dumps(src_acct())
 
+        type_ = 'bucket'
         if md_type == metadata_type.USER:
-            (retVal, dest_acct) = self.client.request(self.dest_conn,
-                                ['metadata', 'metaput', 'user'], args, data=outData)
-        elif md_type == metadata_type.BUCKET or md_type == metadata_type.BUCKET_INSTANCE:
-            (retVal, dest_acct) = self.client.request(self.dest_conn,
-                                ['metadata', 'metaput', 'bucket'], args, data=outData)
-        else:
-            # invalid metadata type, return an http error code
-            print 'invalid metadata_type found in add_entry_to_remote(). value: ', md_type
-            return 404
+            type_ = 'user'
+        retVal, dest_acct = self.client.request(self.dest_conn,
+                                                ['metadata', 'metaput', type_],
+                                                args, data=outData)
 
         if 200 != retVal:
             print 'metadata user (PUT) failed, return http code: ', retVal
             print 'body: ', dest_acct()
-            return retVal
-        elif debug_commands:
-            print 'add_entry_to_remote metadata userput() returned: ', retVal
-
-
-        return retVal
-
-
-     # for now, just reuse the add_entry code. May need to differentiate in the future
-    def update_remote_entry(self, entry, md_type):
-        return self.add_entry_to_remote(entry, md_type)
-
-
-    # use the specified connection as it may be pulling metadata from any rgw
-    def pull_metadata_for_entry(self, conn, entry_name, md_type):
-
-        if md_type == metadata_type.USER:
-            (retVal, out) = self.client.request(conn,
-                                ['metadata', 'metaget', 'user'], {"key":entry_name})
-        else:
-            (retVal, out) = self.client.request(conn,
-                                ['metadata', 'metaget', 'bucket'], {"key":entry_name})
-
-        if 200 != retVal and 404 != retVal:
-            print 'pull_metadata_for_entry() metadata user(GET) failed for ', \
-                  '{entry} returned {val}'.format(entry=entry_name,val=retVal)
-            return retVal, None
-        else:
-            if debug_commands:
-                print 'pull_metadata_for_entry for {entry} returned: ', \
-                      '{val}'.format(entry=entry_name,val=retVal)
-
-        return retVal, out()
-
-    # only used for debugging at present
-    def manually_diff(self, source_data, dest_data):
-        diffkeys1 = [k for k in source_data if source_data[k] != dest_data[k]]
-        diffkeys2 = [k for k in dest_data if dest_data[k] != \
-                      source_data[k] and not (k in source_data) ]
-
-        return diffkeys1 + diffkeys2
-
-    def manually_diff_individual_user(self, uid):
-        retVal = 200 # default to success
-
-        # get user metadata from the source side
-        (retVal, source_data) = self.pull_metadata_for_uid(self.source_conn, uid)
-        if 200 != retVal:
-            return retVal
-
-        # get the metadata for the same uid from the dest side
-        (retVal, dest_data) = self.pull_metadata_for_uid(self.dest_conn, uid)
-        if 200 != retVal:
-            return retVal
-
-        diff_set = self.manually_diff(source_data, dest_data)
-
-        if 0 == len(diff_set):
-            print 'deep comparison of uid ', uid, ' passed'
-        else:
-            for k in diff_set:
-                print k, ':', source_data[k], ' != ', dest_data[k]
-                retVal = 400 # throw an http-ish error code
 
         return retVal
 
@@ -488,40 +406,6 @@ class MetadataWorker(Worker):
     # both use the same APIs
     def delete_meta_entry(self, conn, entry_name, md_type, tag=None):
         retVal = 200
-
-        # this should be a 404, as the entry was deleted from the
-        # source (which is why it's in the log as a delete) or a 200
-        # (if it was deleted and then the same entry was added in the
-        # same logging window)
-        retVal, source_data = self.pull_metadata_for_entry(self.source_conn, entry_name, md_type)
-        if 200 != retVal and 404 != retVal:
-            print 'pull from source failed for entry ', entry_name, '; ', \
-                  retVal, ' was returned'
-            return retVal
-
-        retVal, dest_data = self.pull_metadata_for_entry(self.dest_conn, \
-                                                      entry_name, md_type)
-        if 200 != retVal:
-            # if the entry does not exist on the non-master zone for
-            # some reason, then our work is done here, so return a
-            # success on a 404
-            if 404 == retVal:
-                return 200
-            else:
-                print 'pull from dest failed for entry ', entry_name, '; ', \
-                      retVal, ' was returned'
-                return retVal
-
-        # If the tag in the metadata log on the dest_data does not
-        # match the current tag for the entry, skip this entry. We
-        # assume this is caused by this entry being for a entry that
-        # has been deleted.
-        if tag != None and tag != dest_data['ver']['tag']:
-            print 'log tag ', tag, ' != current entry tag ', \
-                  dest_data['ver']['tag'], \
-                  '. Skipping this entry / tag pair (', entry_name, " / ", \
-                  tag, ")"
-            return 200
 
         retVal = self.delete_remote_entry(conn, entry_name, md_type)
         if 200 != retVal:
@@ -531,66 +415,6 @@ class MetadataWorker(Worker):
         elif debug_commands:
             print 'delete_remote_entry() for entry ', entry_name, '; ', \
                       ' returned ', retVal
-
-        return retVal
-
-    # this is used to check either a user or a bucket creation / update, since
-    # both use the same APIs
-    def check_meta_entry(self, entry_name, md_type, tag=None):
-        retVal = 200
-
-        retVal, source_data = \
-          self.pull_metadata_for_entry(self.source_conn, entry_name, md_type)
-
-        # user must have been deleted; return success as there's nothing to sync
-        if 404 == retVal:
-            print 'entry ', entry_name, ' no longer exists on the master. ', \
-                  'Skipping it'
-            return 200
-        if 200 != retVal:
-            print 'pull from source failed for entry ', entry_name, '; ', \
-                  retVal, ' was returned'
-            return retVal
-        elif debug_commands:
-            print 'in check_meta_entry(), pull_metadata_for_entry() returned ',\
-                  retVal, ' for entry: ', entry_name
-
-        # If the tag in the metadata log on the source_data does not match the
-        # current tag for the entry, skip this entry. We assume this is caused
-        # by this entry being for a entry that has been deleted.
-        if tag != None and tag != source_data['ver']['tag']:
-            print 'log tag ', tag, ' != current entry tag ', \
-                  source_data['ver']['tag'], \
-                  '. Skipping this entry / tag pair (', entry_name, \
-                  ' / ', tag, ')'
-            return 200
-
-        # if the user does not exist on the non-master side, then a 404
-        # return value is appropriate
-        retVal, dest_data = self.pull_metadata_for_entry(self.dest_conn, \
-                                                         entry_name, md_type)
-        if 200 != retVal and 404 != retVal:
-            print 'pull from dest failed for entry: ', entry_name
-            return retVal
-
-        # if this user does not exist on the destination side, add it
-        if (retVal == 404 and dest_data['Code'] == 'NoSuchKey'):
-            print 'entry: ', entry_name, ' missing from the remote side. ', \
-                  'Adding it'
-            retVal = self.add_entry_to_remote(entry_name, md_type)
-
-        else: # if the user exists on the remote side,
-              # ensure they're the same version
-            dest_ver = dest_data['ver']['ver']
-            source_ver = source_data['ver']['ver']
-
-            if dest_ver != source_ver:
-                print 'entry: ', entry_name, ' local_ver: ', source_ver, \
-                      ' != dest_ver: ', dest_ver, ' UPDATING'
-                retVal = self.update_remote_entry(entry_name, md_type)
-            elif debug_commands:
-                print 'entry: ', entry_name, ' local_ver: ', source_ver, \
-                      ' == dest_ver: ', dest_ver
 
         return retVal
 
@@ -622,7 +446,8 @@ class MetadataWorker(Worker):
             # test if there is already an entry in the dictionary for the user
             if key in metadata_entries:
                 # if there is, then only add this one if the ver is higher
-                if metadata_entries[key] < ver:
+                # exclude writes since they aren't complete yet
+                if metadata_entries[key] < ver and status != 'write':
                     metadata_entries[key] = section, ver, status
             else: # if not, just add this entry
                 metadata_entries[key] = section, ver, status
@@ -661,8 +486,8 @@ class MetadataWorker(Worker):
             if status == 'remove':
                 retVal = self.delete_meta_entry(self.dest_conn, name, md_type,
                                                 tag)
-            elif status == 'write':
-                    retVal = self.check_meta_entry(name, md_type, tag)
+            elif status == 'complete':
+                    retVal = self.add_remote_entry(name, md_type, tag)
             else:
                 print 'doing something???? to ', name, ' section: ', status
                 retVal = 500
@@ -674,7 +499,6 @@ class MetadataWorker(Worker):
                 # will be handled by the calling function
                 return retVal
         return retVal
-
 
     def run(self):
         while True:
@@ -706,8 +530,6 @@ class MetadataWorker(Worker):
                 print 'acquire_log_lock() failed, returned http code: ', retVal
                 self.result_queue.put((self.processID, shard_num, retVal))
                 continue
-            elif debug_commands:
-                print 'acquire_log_lock() returned: ', retVal
 
             # get the log for this shard of the metadata log
             (retVal, out) = self.client.request(self.source_conn,
@@ -722,8 +544,6 @@ class MetadataWorker(Worker):
                                       self.source_zone, shard_num)
                 self.result_queue.put((self.processID, shard_num, retVal))
                 continue
-            elif debug_commands:
-                print 'metadata list returned: ', retVal
 
             log_entry_list = out()
 
