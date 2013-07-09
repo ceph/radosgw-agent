@@ -96,7 +96,7 @@ def request(connection, cmd, params=None, headers=None, raw=False,
 
     basepath = 'admin' if admin else ''
     request_data = data if data else ''
-    request = _build_request(connection, cmd, method, resource, basepath,
+    request = _build_request(connection, cmd, method, basepath, resource,
                              query_args=query_args,
                              headers=headers,
                              data=request_data,
