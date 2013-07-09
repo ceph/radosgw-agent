@@ -30,7 +30,7 @@ class Syncer:
 
         # get the list of changes
         (retVal, out) = client.request(self.source_conn,
-                                       ['log', 'type=%s' % self._type])
+                                       ['log', 'list', 'type=%s' % self._type])
 
         if 200 != retVal:
             print 'log list in sync_all() failed, code: ', retVal
