@@ -24,6 +24,7 @@ class Syncer:
             aws_secret_access_key = source_secret_key,
             is_secure=False,
             host = source_host,
+            port = source_port,
             calling_format = boto.s3.connection.OrdinaryCallingFormat(),
             debug=2
         )

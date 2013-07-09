@@ -45,6 +45,7 @@ def parse_args(args, namespace):
         )
     parser.add_argument(
         '--src-port',
+        type=int,
         default=None,
         help='port number for source radosgw'
         )
@@ -73,6 +74,7 @@ def parse_args(args, namespace):
         )
     parser.add_argument(
         '--dest-port',
+        type=int,
         default=None,
         help='port number for destination radosgw'
         )
