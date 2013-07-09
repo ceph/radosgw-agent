@@ -95,10 +95,11 @@ def request(connection, cmd, params=None, headers=None, raw=False,
     resource, query_args = _get_resource(cmd)
 
     basepath = 'admin' if admin else ''
+    request_data = data if data else ''
     request = _build_request(connection, cmd, method, resource, basepath,
                              query_args=query_args,
                              headers=headers,
-                             data=data,
+                             data=request_data,
                              params=params)
 
     url = '{protocol}://{host}{path}'.format(protocol=request.protocol,
