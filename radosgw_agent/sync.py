@@ -1,4 +1,5 @@
 import boto
+import boto.s3.connection
 import multiprocessing
 
 from . import worker

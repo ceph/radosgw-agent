@@ -22,6 +22,7 @@ def parse_args(args, namespace):
         )
     parser.add_argument(
         '--src-az', '--source-availability-zone',
+        dest='src_zone',
         required=True,
         help='availability zone to sync from',
         )
@@ -49,6 +50,7 @@ def parse_args(args, namespace):
         )
     parser.add_argument(
         '--dest-az', '--destination-availability-zone',
+        dest='dest_zone',
         required=True,
         help='availability zone to sync to',
         )
@@ -104,7 +106,7 @@ def parse_args(args, namespace):
 
 def main(args=None, namespace=None):
     args = parse_args(args, namespace)
-    syncer = sync.syncer(args.sync_type)
+    syncer = sync.Syncer(args.sync_type)
     syncer.sync_all(args.src_akey, args.src_skey, args.src_host, args.src_port,
                     args.src_zone, args.dest_akey, args.dest_skey,
                     args.dest_host, args.dest_port, args.dest_zone,
