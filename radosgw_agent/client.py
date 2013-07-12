@@ -14,6 +14,19 @@ ZONE_RESOURCES = ['pool', 'garbage']
 MDLOG_RESOURCES = ['mdlog']
 LOG_RESOURCES = ['lock', 'unlock', 'trim']
 
+
+class HttpError(Exception):
+    def __init__(self, code, body):
+        self.code = code
+        self.body = body
+        self.message = 'Http error code %d content %s' % (code, body)
+class NotFound(HttpError):
+    pass
+code_to_exc = {
+    404: NotFound,
+    }
+
+
 def _get_cmd_method_and_handler(cmd):
     if cmd[1] in PUT_CMDS:
         return 'PUT', requests.put
@@ -49,7 +62,7 @@ def _get_resource(cmd):
         else:
             return 'zone', cmd[0]
     elif cmd[0] == 'metadata':
-        if len(cmd) == 3 and (cmd[1] == 'metaget' or cmd[1] == 'metaput'):
+        if len(cmd) == 3 and cmd[1] in ['metaget', 'metaput', 'delete']:
             return 'metadata/' + cmd[2], ''
         else:
             return 'metadata', ''
@@ -84,7 +97,7 @@ def _build_request(conn, cmd, method, basepath='', resource = '', headers=None,
     return AWSAuthConnection.build_base_http_request(
         conn, method, path, auth_path, params, headers, data, host)
 
-def request(connection, cmd, params=None, headers=None, raw=False,
+def request(connection, cmd, params=None, headers=None,
             data=None, admin=True):
     if headers is None:
         headers = {}
@@ -110,7 +123,28 @@ def request(connection, cmd, params=None, headers=None, raw=False,
 
     result = handler(url, params=params, headers=request.headers, data=data)
 
-    if raw:
-        return result.status_code, result.txt
-    else:
-        return result.status_code, result.json
+    if result.status_code / 100 != 2:
+        raise code_to_exc.get(result.status_code,
+                              RGWHttpError)(result.status_code, result.content)
+
+    return result.json()
+
+def get_metadata(connection, section, name):
+    return request(connection, ['metadata', 'metaget', section],
+                   dict(key=name))
+
+def update_metadata(connection, section, name, metadata):
+    if not instanceof(metadata, basestring):
+        metadata = json.dumps(metadata)
+    return request(connection, ['metadata', 'metaput', section],
+                   dict(key=name), data=metadata)
+
+def delete_metadata(connection, section, name):
+    return request(connection, ['metadata', 'delete', section],
+                   dict(key=name))
+
+def get_metadata_sections(connection):
+    return request(connection, ['metadata'])
+
+def list_metadata_keys(connection, section):
+    return request(connection, ['metadata', 'metaget', section])

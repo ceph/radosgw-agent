@@ -15,18 +15,19 @@ class Syncer:
     def __init__(self, type_):
         self._type = type_
 
-    def sync_all(self, source_access_key, source_secret_key, source_host,
-                 source_port, source_zone, dest_access_key, dest_secret_key,
-                 dest_host, dest_port, dest_zone, num_workers, log_lock_time):
+    def sync_continuous(self, source_access_key, source_secret_key, source_host,
+                        source_port, source_zone, dest_access_key,
+                        dest_secret_key, dest_host, dest_port, dest_zone,
+                        num_workers, log_lock_time):
 
         self.source_conn = boto.s3.connection.S3Connection(
-            aws_access_key_id = source_access_key,
-            aws_secret_access_key = source_secret_key,
+            aws_access_key_id=source_access_key,
+            aws_secret_access_key=source_secret_key,
             is_secure=False,
-            host = source_host,
-            port = source_port,
-            calling_format = boto.s3.connection.OrdinaryCallingFormat(),
-            debug=2
+            host=source_host,
+            port=source_port,
+            calling_format=boto.s3.connection.OrdinaryCallingFormat(),
+            debug=2,
         )
 
         # get the list of changes
@@ -38,7 +39,7 @@ class Syncer:
         elif debug_commands:
             print 'log list in sync_all() returned code: ', retVal
 
-        num_shards = out()['num_objects']
+        num_shards = out['num_objects']
         print 'We have ', num_shards, ' shards to check'
 
         # create the work and results Queue
@@ -68,6 +69,81 @@ class Syncer:
         # enqueue the shards to be synced
         for i in xrange(num_shards):
             workQueue.put(i)
+
+        # add a poison pill for each worker
+        for i in xrange(num_workers):
+            workQueue.put(None)
+
+        # pull the results out as they are produced
+        for i in xrange(num_shards):
+            processID, shard_num, retVal = resultQueue.get()
+            if 200 != retVal:
+                print 'shard ', shard_num, ' process ', processID, \
+                      ' exited with status ', retVal
+            elif debug_commands:
+                print 'shard ', shard_num, ' process ', processID, \
+                      ' exited with status ', retVal
+
+            print 'shard ', shard_num, ' process ', processID, \
+            ' exited with status ', retVal
+
+    def sync_full(self, source_access_key, source_secret_key, source_host,
+                  source_port, source_zone, dest_access_key,
+                  dest_secret_key, dest_host, dest_port, dest_zone,
+                  num_workers, log_lock_time):
+
+        self.source_conn = boto.s3.connection.S3Connection(
+            aws_access_key_id = source_access_key,
+            aws_secret_access_key = source_secret_key,
+            is_secure=False,
+            host=source_host,
+            port=source_port,
+            calling_format = boto.s3.connection.OrdinaryCallingFormat(),
+            debug=2
+        )
+
+        try:
+            sections = client.get_metadata_sections()
+        except client.HttpError as e:
+            log.error('Error listing metadata sections: %s', e)
+            raise
+
+        meta_keys = {}
+        for section in sections:
+            try:
+                meta_keys[section] = client.list_metadata(section)
+            except client.HttpError as e:
+                log.error('Error listing metadata for section %s: %s',
+                          section, e)
+                raise
+
+        # create the work and results Queue
+        workQueue = multiprocessing.Queue()
+        resultQueue = multiprocessing.Queue()
+
+        # list of processes that will sync the shards
+        processes = []
+        workerID = 0
+
+        # create the worker processes
+        if self._type == 'data':
+            worker_cls = worker.DataWorker
+        else:
+            worker_cls = worker.MetadataWorker
+        for i in xrange(num_workers):
+            process = \
+                worker_cls(workerID, workQueue, resultQueue, self._type,
+                           log_lock_time, source_access_key, source_secret_key,
+                           source_host, source_port, source_zone,
+                           dest_access_key, dest_secret_key, dest_host,
+                           dest_port, dest_zone)
+            process.start()
+            processes.append(process)
+            workerID += 1
+
+        # enqueue the shards to be synced
+        for meta in meta_keys.iteritems():
+            workQueue.put(meta)
 
         # add a poison pill for each worker
         for i in xrange(num_workers):
