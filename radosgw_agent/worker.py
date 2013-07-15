@@ -1,15 +1,18 @@
 import boto
 import datetime
-import json
 import logging
 import multiprocessing
 import os
+import socket
 import threading
 import time
 
-import radosgw_agent.client
+from radosgw_agent import client
 
 log = logging.getLogger(__name__)
+
+RESULT_SUCCESS = 0
+RESULT_ERROR = 1
 
 class Worker(multiprocessing.Process):
     """sync worker to run in its own process"""
@@ -18,89 +21,67 @@ class Worker(multiprocessing.Process):
     def flip_log_lock(self):
         self.relock_log = True
 
-    def __init__(self, processID, work_queue, result_queue, log_lock_time,
-                 source_access_key, source_secret_key, source_host, source_port,
-                 source_zone, dest_access_key, dest_secret_key,
-                 dest_host, dest_port, dest_zone, pending_timeout=10):
-
+    def __init__(self, work_queue, result_queue, log_lock_time,
+                 src, dest):
         super(Worker, self).__init__()
-        self.source_zone = source_zone
-        self.dest_zone = dest_zone
-        self.processID = processID
-        self.processName = 'process-' + str(self.processID)
+        self.source_zone = src.zone
+        self.dest_zone = dest.zone
         self.work_queue = work_queue
         self.result_queue = result_queue
         self.log_lock_time = log_lock_time
 
-        self.local_lock_id = os.getpid() # plus a few random chars
+        self.local_lock_id = (socket.gethostname() + str(os.getpid()) +
+                              str(threading.current_thread()))
 
         # construct the two connection objects
         self.source_conn = boto.s3.connection.S3Connection(
-            aws_access_key_id = source_access_key,
-            aws_secret_access_key = source_secret_key,
+            aws_access_key_id=src.access_key,
+            aws_secret_access_key=src.secret_key,
             is_secure=False,
-            host = source_host,
-            calling_format = boto.s3.connection.OrdinaryCallingFormat(),
-            debug=2
-        )
+            host=src.host,
+            port=src.port,
+            calling_format=boto.s3.connection.OrdinaryCallingFormat(),
+            debug=2,
+            )
 
         self.dest_conn = boto.s3.connection.S3Connection(
-          aws_access_key_id = dest_access_key,
-          aws_secret_access_key = dest_secret_key,
-          is_secure=False,
-          host = dest_host,
-          calling_format = boto.s3.connection.OrdinaryCallingFormat(),
-        )
+            aws_access_key_id=dest.access_key,
+            aws_secret_access_key=dest.secret_key,
+            is_secure=False,
+            host=dest.host,
+            port=dest.port,
+            calling_format = boto.s3.connection.OrdinaryCallingFormat(),
+            )
 
     # we explicitly specify the connection to use for the locking here
     # in case we need to lock a non-master log file
-    def acquire_log_lock(self, conn, lock_id, zone_id, shard_num):
+    def acquire_log_lock(self, lock_id, zone_id, shard_num):
 
         log.debug('acquiring lock on shard %d', shard_num)
 
         try:
-            client.request(conn, ['log', 'lock'],
-                           {'type': self._type, 'id': shard_num,
-                            'length': self.log_lock_time,
-                            'zone-id': zone_id, 'locker-id': lock_id})
+            client.lock_shard(self.source_conn, self._type, shard_num, zone_id,
+                              self.log_lock_time, self.local_lock_id)
         except client.HttpError as e:
-            log.warn('acquire_log_lock for shard {0} in '
-                     'zone {1} failed with status {2}',
-                     shard_num, zone_id, e.code)
+            log.error('locking shard %d in zone %s failed: %s',
+                     shard_num, zone_id, e)
             # clear this flag for the next pass
             self.relock_log = False
-            return e.code
-
-        log.debug('acquire_log_lock returned: ', ret)
+            raise
 
         # twiddle the boolean flag to false
         self.relock_log = False
 
         # then start the timer to twiddle it back to true
-        self.relock_timer = threading.Timer(0.85 * self.log_lock_time, \
+        self.relock_timer = threading.Timer(0.5 * self.log_lock_time, \
                                             self.flip_log_lock)
         self.relock_timer.start()
 
-        return ret
 
-
-    # we explicitly specify the connection to use for the locking here
-    # in case we need to lock a non-master log file
-    def release_log_lock(self, conn, lock_id, zone_id, shard_num):
-        try:
-            client.request(self.source_conn,
-                           ['log', 'unlock'], {
-                               'type': self._type, 'id': shard_num,
-                               'locker-id': lock_id,
-                               'zone-id': zone_id})
-
-        except client.HttpError as e:
-            log.warn('data log unlock for zone %s failed, '
-                     'returned http code %d', zone_id, ret)
-        log.debug('data log unlock for zone %s returned %d',
-                  zone_id, ret)
-
-        return ret
+    def release_log_lock(self, lock_id, zone_id, shard_num):
+        log.debug('releasing lock on shard %d', shard_num)
+        client.unlock_shard(self.source_conn, self._type, shard_num,
+                            zone_id, self.local_lock_id)
 
 
 class DataWorker(Worker):
@@ -342,6 +323,7 @@ class DataWorker(Worker):
 
 
 class MetadataEntry(object):
+
     def __init__(self, entry):
         self.data = entry
         self.name = entry['name']
@@ -365,69 +347,24 @@ class MetadataWorker(Worker):
         super(MetadataWorker, self).__init__(*args, **kwargs)
         self._type = 'metadata'
 
-    # this is used to check either a user or a bucket creation / update, since
-    # both use the same APIs
-    def sync_complete_entry(self, entry_name, md_type, tag=None):
-        ret = 200
-
-        # If the tag in the metadata log on the source_data does not match the
-        # current tag for the entry, skip this entry. We assume this is caused
-        # by this entry being for a entry that has been deleted.
-        if tag != None and tag != source_data['ver']['tag']:
-            print 'log tag ', tag, ' != current entry tag ', \
-                  source_data['ver']['tag'], \
-                  '. Skipping this entry / tag pair (', entry_name, \
-                  ' / ', tag, ')'
-            return 200
-
-        # if the user does not exist on the non-master side, then a 404
-        # return value is appropriate
-        ret, dest_data = self.pull_metadata_for_entry(self.dest_conn, \
-                                                         entry_name, md_type)
-        if 200 != ret and 404 != ret:
-            print 'pull from dest failed for entry: ', entry_name
-            return ret
-
-        # if this user does not exist on the destination side, add it
-        if ret == 404 and dest_data['Code'] == 'NoSuchKey':
-            print 'entry: ', entry_name, ' missing from the remote side. ', \
-                  'Adding it'
-            ret = self.add_entry_to_remote(entry_name, md_type)
-
-        else: # if the user exists on the remote side,
-              # ensure they're the same version
-            dest_ver = dest_data['ver']['ver']
-            source_ver = source_data['ver']['ver']
-
-            if dest_ver != source_ver:
-                print 'entry: ', entry_name, ' local_ver: ', source_ver, \
-                      ' != dest_ver: ', dest_ver, ' UPDATING'
-                ret = self.update_remote_entry(entry_name, md_type)
-            elif debug_commands:
-                print 'entry: ', entry_name, ' local_ver: ', source_ver, \
-                      ' == dest_ver: ', dest_ver
-
-        return ret
-
-    def check_pending(self, pending):
-        for key, entry in pending:
-            section, name = key
-            log.debug('Checking pending entry %s', entry)
-                self.client.request(self.dest_conn,
-                                    ['metadata', 'metaput', type_])
-
     def sync_meta(self, section, name):
-            ret, metadata = client.get_metadata(self.source_conn, section,
-                                                name)
-            if ret == 404:
-                ret, _ = client.delete_metadata(self.source_conn, section,
-                                                name)
-            elif ret == 200:
-                ret, _ = client.update_metadata(self.source_conn, section,
-                                                name, metadata)
-            else:
-                log.error('error getting metadata for %s: %d %s',
-                          entry, ret, metadata)
+        log.debug('syncing metadata type %s key "%s"', section, name)
+        try:
+            metadata = client.get_metadata(self.source_conn, section, name)
+        except client.HttpError as e:
+            log.error('error getting metadata for %s "%s": %s',
+                      section, name, e)
+            raise
+        except client.NotFound:
+            client.delete_metadata(self.dest_conn, section, name)
+        else:
+            client.update_metadata(self.dest_conn, section, name, metadata)
+
+class MetadataWorkerPartial(MetadataWorker):
+
+    def __init__(self, *args, **kwargs):
+        self.pending_timeout = kwargs.get('pending_timeout', 10)
+        super(MetadataWorkerPartial, self).__init__(*args, **kwargs)
 
     def get_complete_entries(self, entries):
         """
@@ -481,95 +418,89 @@ class MetadataWorker(Worker):
         if pending:
             time.sleep(self.pending_timeout)
 
-        for _, entry in complete + pending:
-            self.sync_metadata(entry.section, entry.name)
-
-        return ret
+        for entry in complete + pending:
+            self.sync_meta(entry.section, entry.name)
 
     def run(self):
         while True:
-            shard_num = self.work_queue.get()
+            shard_num, start_time, end_time = self.work_queue.get()
+            log.debug('working on shard %s', shard_num)
             if shard_num is None:
-                log.info('process %s is done. Exiting', self.processName)
+                log.info('process %s is done. Exiting', self.ident)
                 break
 
             log.info('%s is processing shard number %d',
-                     self.processName, shard_num)
-
-            # we need this due to a bug in rgw that isn't auto-filling in
-            # sensible defaults when start-time is omitted
-            really_old_time = "2010-10-10 12:12:00"
-
-            # NOTE rgw deals in UTC time. Make sure you adjust your
-            # calls accordingly
-            sync_start_time = \
-              datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                     self.ident, shard_num)
 
             # first, lock the log
-            ret = self.acquire_log_lock(self.source_conn,
-                                           self.local_lock_id, self.source_zone,
-                                           shard_num)
+            try:
+                self.acquire_log_lock(self.local_lock_id, self.source_zone,
+                                      shard_num)
 
-            if 200 != ret:
-                print 'acquire_log_lock() failed, returned http code: ', ret
-                self.result_queue.put((self.processID, shard_num, ret))
+            except client.HttpError as e:
+                log.info('error locking shard %d log, assuming'
+                         ' it was processed by someone else and skipping: %s',
+                         shard_num, e)
+                self.result_queue.put((RESULT_ERROR, shard_num))
                 continue
-
-            # get the log for this shard of the metadata log
-            (ret, out) = self.client.request(self.source_conn,
-                                   ['log', 'list', 'id=' + str(shard_num)],
-                                   {"type":"metadata", "id":shard_num})
-
-            if 200 != ret:
-                print 'metadata list failed, returned http code: ', ret
-                # we hit an error getting the data to sync.
-                # Bail and unlock the log
-                self.release_log_lock(self.source_conn, self.local_lock_id, \
-                                      self.source_zone, shard_num)
-                self.result_queue.put((self.processID, shard_num, ret))
-                continue
-
-            log_entry_list = out()
-
-            print 'shard ', shard_num, ' has ', len(log_entry_list), ' entries'
 
             try:
-                entries = [MetadataEntry(x) for entry in log_entry_list]
+                log_entries = client.get_meta_log(self.source_conn, shard_num,
+                                                  start_time, end_time)
+            except client.HttpError as e:
+                log.error('metadata list failed: %s', e)
+                # we hit an error getting the data to sync.
+                # Bail and unlock the log
+                try:
+                    self.release_log_lock(self.local_lock_id,
+                                          self.source_zone, shard_num)
+                except:
+                    log.exception('error unlocking log, continuing anyway '
+                                  'since lock will timeout')
+                self.result_queue.put((RESULT_ERROR, shard_num))
+                continue
+
+            log.info('shard %d has %d entries', shard_num, len(log_entries))
+            try:
+                entries = [MetadataEntry(entry) for entry in log_entries]
             except KeyError:
                 log.exception('error reading metadata entry, skipping shard')
+                log.error('log was: %s', log_entries)
                 continue
 
-            ret = self.process_entries(entries)
-
-            if 200 != ret:
-                print 'process_entries() returned http code ', ret
-                # we hit an error processing a user. Bail and unlock the log
-                self.release_log_lock(self.source_conn, self.local_lock_id, \
+            try:
+                self.process_entries(entries)
+            except Exception as e:
+                log.exception('error processing log entries for shard %d',
+                              shard_num)
+                self.release_log_lock(self.local_lock_id,
                                       self.source_zone, shard_num)
-                self.result_queue.put((self.processID, shard_num, ret))
-                continue
-
-            # trim the log for this shard now that all the users are synched
-            # this should only occur if no users threw errors
-            (ret, out) = self.client.request(self.source_conn,
-                          ['log', 'trim', 'id=' + str(shard_num)],
-                          {'id':shard_num, 'type':'metadata',
-                          'start-time':really_old_time,
-                          'end-time':sync_start_time})
-
-            if 200 != ret:
-                print 'log trim returned http code ', ret
-                # we hit an error processing a user. Bail and unlock the log
-                self.release_log_lock(self.source_conn, self.local_lock_id, \
-                                      self.source_zone, shard_num)
-                self.result_queue.put((self.processID, shard_num, ret))
+                self.result_queue.put((RESULT_ERROR, shard_num))
                 continue
 
             # finally, unlock the log
-            self.release_log_lock(self.source_conn, self.local_lock_id, \
+            self.release_log_lock(self.local_lock_id, \
                                   self.source_zone, shard_num)
 
-            self.result_queue.put((self.processID, shard_num, ret))
+            self.result_queue.put((RESULT_SUCCESS, shard_num))
 
-            log.info('%s finished processing shard %d',
-                     self.processName, shard_num)
+            log.info('finished processing shard %d', shard_num)
+
+class MetadataWorkerFull(MetadataWorker):
+
+    def run(self):
+        while True:
+            meta = self.work_queue.get()
+            if meta is None:
+                log.info('No more entries in queue, exiting')
+                break
+
+            try:
+                section, name = meta
+                self.sync_meta(section, name)
+                result = RESULT_SUCCESS
+            except Exception as e:
+                log.exception('could not sync entry %s "%s": %s',
+                              section, name, e)
+                result = RESULT_ERROR
+            self.work_queue.put((result, section, name))

@@ -1,5 +1,6 @@
 import boto
-import logging
+import collections
+import json
 import requests
 
 from boto.connection import AWSAuthConnection
@@ -14,18 +15,21 @@ ZONE_RESOURCES = ['pool', 'garbage']
 MDLOG_RESOURCES = ['mdlog']
 LOG_RESOURCES = ['lock', 'unlock', 'trim']
 
+Endpoint = collections.namedtuple('Endpoint', ['host', 'port', 'access_key',
+                                               'secret_key', 'zone'])
 
 class HttpError(Exception):
     def __init__(self, code, body):
         self.code = code
         self.body = body
         self.message = 'Http error code %d content %s' % (code, body)
+    def __str__(self):
+        return self.message
 class NotFound(HttpError):
     pass
 code_to_exc = {
     404: NotFound,
     }
-
 
 def _get_cmd_method_and_handler(cmd):
     if cmd[1] in PUT_CMDS:
@@ -125,8 +129,10 @@ def request(connection, cmd, params=None, headers=None,
 
     if result.status_code / 100 != 2:
         raise code_to_exc.get(result.status_code,
-                              RGWHttpError)(result.status_code, result.content)
+                              HttpError)(result.status_code, result.content)
 
+    if data:
+        return result.raw
     return result.json()
 
 def get_metadata(connection, section, name):
@@ -134,7 +140,7 @@ def get_metadata(connection, section, name):
                    dict(key=name))
 
 def update_metadata(connection, section, name, metadata):
-    if not instanceof(metadata, basestring):
+    if not isinstance(metadata, basestring):
         metadata = json.dumps(metadata)
     return request(connection, ['metadata', 'metaput', section],
                    dict(key=name), data=metadata)
@@ -144,7 +150,27 @@ def delete_metadata(connection, section, name):
                    dict(key=name))
 
 def get_metadata_sections(connection):
-    return request(connection, ['metadata'])
+    return request(connection, ['metadata', 'get'])
 
 def list_metadata_keys(connection, section):
     return request(connection, ['metadata', 'metaget', section])
+
+def lock_shard(connection, lock_type, shard_num, zone_id, timeout, locker_id):
+    return request(connection, ['log', 'lock'],
+                   {'type': lock_type, 'id': shard_num,
+                    'length': timeout, 'zone-id': zone_id,
+                    'locker-id': locker_id})
+
+def unlock_shard(connection, lock_type, shard_num, zone_id, locker_id):
+    return request(connection, ['log', 'unlock'],
+                   {'type': lock_type, 'id': shard_num,
+                    'locker-id': locker_id, 'zone-id': zone_id})
+
+def get_meta_log(connection, shard_num, start_time, end_time):
+    return request(connection, ['log', 'list', 'id=' + str(shard_num)],
+                   {'type': 'metadata', 'id': shard_num,
+                    'start-time': start_time, 'end-time': end_time})
+
+def num_log_shards(connection, shard_type):
+    out = request(connection, ['log', 'list', 'type=' + shard_type])
+    return out['num_objects']
