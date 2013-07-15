@@ -503,4 +503,4 @@ class MetadataWorkerFull(MetadataWorker):
                 log.exception('could not sync entry %s "%s": %s',
                               section, name, e)
                 result = RESULT_ERROR
-            self.work_queue.put((result, section, name))
+            self.result_queue.put((result, section, name))
