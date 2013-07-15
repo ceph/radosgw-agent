@@ -436,7 +436,10 @@ class MetadataWorkerPartial(MetadataWorker):
             try:
                 self.acquire_log_lock(self.local_lock_id, self.source_zone,
                                       shard_num)
-
+            except client.NotFound:
+                # no log means nothing changed in this time period
+                self.result_queue.put((RESULT_SUCCESS, shard_num))
+                continue
             except client.HttpError as e:
                 log.info('error locking shard %d log, assuming'
                          ' it was processed by someone else and skipping: %s',
