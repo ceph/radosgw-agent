@@ -89,6 +89,9 @@ class Syncer:
             try:
                 meta_keys += [(section, key) for key in
                               client.list_metadata_keys(self.src_conn, section)]
+            except client.NotFound:
+                # no keys of this type exist
+                continue
             except client.HttpError as e:
                 log.error('Error listing metadata for section %s: %s',
                           section, e)
