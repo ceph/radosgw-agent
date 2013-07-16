@@ -102,7 +102,7 @@ def _build_request(conn, cmd, method, basepath='', resource = '', headers=None,
         conn, method, path, auth_path, params, headers, data, host)
 
 def request(connection, cmd, params=None, headers=None,
-            data=None, admin=True):
+            data=None, admin=True, expect_json=True):
     if headers is None:
         headers = {}
 
@@ -131,7 +131,7 @@ def request(connection, cmd, params=None, headers=None,
         raise code_to_exc.get(result.status_code,
                               HttpError)(result.status_code, result.content)
 
-    if data:
+    if data or not expect_json:
         return result.raw
     return result.json()
 
@@ -159,12 +159,12 @@ def lock_shard(connection, lock_type, shard_num, zone_id, timeout, locker_id):
     return request(connection, ['log', 'lock'],
                    {'type': lock_type, 'id': shard_num,
                     'length': timeout, 'zone-id': zone_id,
-                    'locker-id': locker_id})
+                    'locker-id': locker_id}, expect_json=False)
 
 def unlock_shard(connection, lock_type, shard_num, zone_id, locker_id):
     return request(connection, ['log', 'unlock'],
                    {'type': lock_type, 'id': shard_num,
-                    'locker-id': locker_id, 'zone-id': zone_id})
+                    'locker-id': locker_id, 'zone-id': zone_id}, expect_json=False)
 
 def get_meta_log(connection, shard_num, start_time, end_time):
     return request(connection, ['log', 'list', 'id=' + str(shard_num)],

@@ -32,7 +32,7 @@ class Simple(object):
     def _create_blank(self):
         log.debug('dir = %s', self.dir)
         if not os.path.exists(self.dir):
-            os.path.makedirs(self.dir)
+            os.makedirs(self.dir)
         self.state = {
             'last_full_sync': UNIX_EPOCH,
             'shards': {}}
