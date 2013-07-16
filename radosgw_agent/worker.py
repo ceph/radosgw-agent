@@ -423,11 +423,12 @@ class MetadataWorkerPartial(MetadataWorker):
 
     def run(self):
         while True:
-            shard_num, start_time, end_time = self.work_queue.get()
-            log.debug('working on shard %s', shard_num)
-            if shard_num is None:
+            items = self.work_queue.get()
+            if items is None:
                 log.info('process %s is done. Exiting', self.ident)
                 break
+            shard_num, start_time, end_time = items
+            log.debug('working on shard %s', shard_num)
 
             log.info('%s is processing shard number %d',
                      self.ident, shard_num)
