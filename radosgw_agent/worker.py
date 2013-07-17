@@ -1,11 +1,11 @@
 import boto
+from collections import namedtuple
 import datetime
 import logging
 import multiprocessing
 import os
 import socket
 import threading
-import time
 
 from radosgw_agent import client
 
@@ -322,24 +322,14 @@ class DataWorker(Worker):
             self.result_queue.put((self.processID, shard_num, '200'))
 
 
-class MetadataEntry(object):
+MetadataEntry = namedtuple('MetadataEntry', ['section', 'name', 'tag'])
 
-    def __init__(self, entry):
-        self.data = entry
-        self.name = entry['name']
-        self.tag = entry['data']['write_version']['tag']
-        self.version = entry['data']['write_version']['version']
-        self.status = entry['data']['status']['status']
-        assert self.status in ['write', 'remove', 'complete']
-        self.section = entry['section']
-        assert self.section in ['user', 'bucket', 'bucket.instance']
-        self.waiting = []
-
-    def is_user(self):
-        return self.section == 'user'
-
-    def __str__(self):
-        return str(self.data)
+def _meta_entry_from_json(entry):
+    return MetadataEntry(
+        entry['name'],
+        entry['section'],
+        entry['data']['write_version']['tag'],
+        )
 
 class MetadataWorker(Worker):
 
@@ -366,59 +356,9 @@ class MetadataWorkerPartial(MetadataWorker):
         self.pending_timeout = kwargs.get('pending_timeout', 10)
         super(MetadataWorkerPartial, self).__init__(*args, **kwargs)
 
-    def get_complete_entries(self, entries):
-        """
-        Go through all the entries, looking for the start and end of
-        operations on a given piece of metadata.
-
-        Returns a tuple of completed entries and pending entries,
-        each of which is a list of MetadataEntry objects
-        """
-        completed = {}
-        pending = {}
-        while entries:
-            entry = entries.pop(0)
-            key = (entry.section, entry.name)
-
-            # this is a newer operation, so ignore the old one
-            if key in completed:
-                del completed[key]
-
-            if entry.status == 'complete':
-                assert key in pending
-                if pending[key].version == entry.version and \
-                       pending[key].tag == entry.tag:
-                    completed[key] = pending[key]
-                    # put the subsequent entries at the beginning of
-                    # the list to be processed so they're ordered
-                    # correctly wrt any entries for the same metadata
-                    # we haven't looked at yet
-                    entries = pending[key].waiting + entries
-                    del pending[key]
-                    completed[key].waiting = []
-                    continue
-                # fall through to the next case if versions differ - this
-                # completion isn't the one we're looking for yet
-
-            # if we haven't found the 'complete' entry for the first
-            # pending operation on this (section, name) pair, hold off on
-            # processing the next entry
-            if key in pending:
-                pending[key].waiting.append(entry)
-                continue
-
-            # wait for the 'complete' entry corresponding to this entry
-            pending[key] = entry
-
-        return completed.values(), pending.values()
-
     def process_entries(self, entries):
-        complete, pending = self.get_complete_entries(entries)
-
-        if pending:
-            time.sleep(self.pending_timeout)
-
-        for entry in complete + pending:
+        mentioned = set([(entry.section, entry.name) for entry in entries])
+        for section, name in mentioned:
             self.sync_meta(entry.section, entry.name)
 
     def run(self):
@@ -466,7 +406,7 @@ class MetadataWorkerPartial(MetadataWorker):
 
             log.info('shard %d has %d entries', shard_num, len(log_entries))
             try:
-                entries = [MetadataEntry(entry) for entry in log_entries]
+                entries = [_meta_entry_from_json(entry) for entry in log_entries]
             except KeyError:
                 log.exception('error reading metadata entry, skipping shard')
                 log.error('log was: %s', log_entries)
