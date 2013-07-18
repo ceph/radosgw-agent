@@ -323,12 +323,15 @@ class MetadataWorker(Worker):
         log.debug('syncing metadata type %s key "%s"', section, name)
         try:
             metadata = client.get_metadata(self.source_conn, section, name)
+        except client.NotFound:
+            try:
+                client.delete_metadata(self.dest_conn, section, name)
+            except client.NotFound:
+                pass
         except client.HttpError as e:
             log.error('error getting metadata for %s "%s": %s',
                       section, name, e)
             raise
-        except client.NotFound:
-            client.delete_metadata(self.dest_conn, section, name)
         else:
             client.update_metadata(self.dest_conn, section, name, metadata)
 
@@ -406,8 +409,10 @@ class MetadataWorkerPartial(MetadataWorker):
                 marker, time = client.get_min_worker_bound(self.source_conn,
                                                            'metadata',
                                                            shard_num)
-                log.debug('oldest marker and time for shard %d are: "%s" "%s"',
+                log.debug('oldest marker and time for shard %d are: %r %r',
                           shard_num, marker, time)
+            except client.NotFound:
+                marker, time = '', '1970-01-01 00:00:00'
             except Exception as e:
                 log.exception('error getting worker bound for shard %d',
                               shard_num)
