@@ -6,6 +6,13 @@ import yaml
 from radosgw_agent import client
 from radosgw_agent import sync
 
+def check_positive_int(string):
+    value = int(string)
+    if value < 1:
+        msg = '%r is not a positive integer' % string
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
 def parse_args():
     conf_parser = argparse.ArgumentParser(add_help=False)
     conf_parser.add_argument(
@@ -58,7 +65,7 @@ def parse_args():
         )
     parser.add_argument(
         '--src-port',
-        type=int,
+        type=check_positive_int,
         help='port number for source radosgw'
         )
     parser.add_argument(
@@ -83,7 +90,7 @@ def parse_args():
         )
     parser.add_argument(
         '--dest-port',
-        type=int,
+        type=check_positive_int,
         help='port number for destination radosgw'
         )
     parser.add_argument(
@@ -105,7 +112,7 @@ def parse_args():
         )
     parser.add_argument(
         '--lock-timeout',
-        type=int,
+        type=check_positive_int,
         default=60,
         help='timeout in seconds after which a log segment lock will expire if '
              'not refreshed'
@@ -121,7 +128,8 @@ def parse_args():
         )
     parser.add_argument(
         '--max-entries',
-        type=int,
+        type=check_positive_int,
+        default=1000,
         help='maximum number of log entries to process at once during '
         'continuous sync',
         )
