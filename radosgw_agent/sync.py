@@ -9,14 +9,14 @@ log = logging.getLogger(__name__)
 
 class Syncer:
 
-    def __init__(self, type_, src, dest, store):
+    def __init__(self, type_, src, dest, daemon_id):
         self._type = type_
         self.src = src
         self.dest = dest
-        self.store = store
         self.src_conn = client.connection(src)
+        self.daemon_id = daemon_id
 
-    def sync_partial(self, num_workers, log_lock_time):
+    def sync_partial(self, num_workers, log_lock_time, max_entries):
         try:
             num_shards = client.num_log_shards(self.src_conn, self._type)
         except:
@@ -33,18 +33,22 @@ class Syncer:
             worker_cls = worker.DataWorkerPartial
         else:
             worker_cls = worker.MetadataWorkerPartial
-        processes = [worker_cls(workQueue, resultQueue, log_lock_time, self.src,
-                                self.dest) for i in xrange(num_workers)]
+        processes = [worker_cls(workQueue,
+                                resultQueue,
+                                log_lock_time,
+                                self.src,
+                                self.dest,
+                                daemon_id=self.daemon_id,
+                                max_entries=max_entries)
+                     for i in xrange(num_workers)]
         for process in processes:
             process.daemon = True
             process.start()
 
-        start_time = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%SZ")
-        log.info('Starting partial sync at %s', start_time)
-
+        log.info('Starting partial sync')
         # enqueue the shards to be synced
         for i in xrange(num_shards):
-            workQueue.put((i, self.store.last_shard_sync(i), start_time))
+            workQueue.put(i)
 
         # add a poison pill for each worker
         for i in xrange(num_workers):
@@ -53,16 +57,13 @@ class Syncer:
         # pull the results out as they are produced
         errors = []
         for i in xrange(num_shards):
-            log.info('%d/%d shards synced', i, num_shards)
             result, shard_num = resultQueue.get()
             if result == worker.RESULT_SUCCESS:
-                self.store.update_shard_timestamp(shard_num, start_time)
-                if resultQueue.empty():
-                    self.store.save_to_disk()
                 log.debug('synced shard %d', shard_num)
             else:
                 log.error('error syncing shard %d', shard_num)
                 errors.append(shard_num)
+            log.info('%d/%d shards processed', i + 1, num_shards)
         if errors:
             log.error('Encountered  errors syncing these %d shards: %s',
                       len(errors), errors)
@@ -73,6 +74,16 @@ class Syncer:
         except client.HttpError as e:
             log.error('Error listing metadata sections: %s', e)
             raise
+
+        # grab the lastest shard markers and timestamps before we sync
+        shard_info = []
+        num_shards = client.num_log_shards(self.src_conn, 'metadata')
+        for shard_num in xrange(num_shards):
+            info = client.get_log_info(self.src_conn, 'metadata', shard_num)
+            # setting an empty marker returns an error
+            if info['marker']:
+                shard_info.append((shard_num, info['marker'],
+                                   info['last_update']))
 
         meta_keys = []
         for section in sections:
@@ -119,15 +130,18 @@ class Syncer:
             log.info('%d/%d items synced', i, len(meta_keys))
             result, section, name = resultQueue.get()
             if result != worker.RESULT_SUCCESS:
-                log.error('error syncing %s "%s"', section, name)
+                log.error('error syncing %s %r', section, name)
                 errors.append((section, name))
             else:
-                log.debug('synced %s "%s"', section, name)
+                log.debug('synced %s %r', section, name)
         for process in processes:
             process.join()
         if errors:
             log.error('Encountered  errors syncing these %d entries: %s',
                       len(errors), errors)
         else:
-            self.store.update_full_sync_timestamp(start_time)
-            self.store.save_to_disk()
+            for shard_num, marker, timestamp in shard_info:
+                client.set_worker_bound(self.src_conn, 'metadata', shard_num,
+                                        marker, timestamp, self.daemon_id)
+                client.del_worker_bound(self.src_conn, 'metadata', shard_num,
+                                        self.daemon_id)

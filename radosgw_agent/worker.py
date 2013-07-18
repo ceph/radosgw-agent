@@ -21,7 +21,7 @@ class Worker(multiprocessing.Process):
         self.relock_log = True
 
     def __init__(self, work_queue, result_queue, log_lock_time,
-                 src, dest):
+                 src, dest, **kwargs):
         super(Worker, self).__init__()
         self.source_zone = src.zone
         self.dest_zone = dest.zone
@@ -39,9 +39,7 @@ class Worker(multiprocessing.Process):
     # we explicitly specify the connection to use for the locking here
     # in case we need to lock a non-master log file
     def acquire_log_lock(self, lock_id, zone_id, shard_num):
-
         log.debug('acquiring lock on shard %d', shard_num)
-
         try:
             client.lock_shard(self.source_conn, self._type, shard_num, zone_id,
                               self.log_lock_time, self.local_lock_id)
@@ -305,13 +303,14 @@ class DataWorker(Worker):
             self.result_queue.put((self.processID, shard_num, '200'))
 
 
-MetadataEntry = namedtuple('MetadataEntry', ['section', 'name', 'tag'])
+MetadataEntry = namedtuple('MetadataEntry', ['section', 'name', 'marker', 'timestamp'])
 
 def _meta_entry_from_json(entry):
     return MetadataEntry(
-        entry['name'],
         entry['section'],
-        entry['data']['write_version']['tag'],
+        entry['name'],
+        entry['id'],
+        entry['timestamp'],
         )
 
 class MetadataWorker(Worker):
@@ -336,22 +335,54 @@ class MetadataWorker(Worker):
 class MetadataWorkerPartial(MetadataWorker):
 
     def __init__(self, *args, **kwargs):
-        self.pending_timeout = kwargs.get('pending_timeout', 10)
+        self.daemon_id = kwargs['daemon_id']
+        self.max_entries = kwargs['max_entries']
         super(MetadataWorkerPartial, self).__init__(*args, **kwargs)
 
-    def process_entries(self, entries):
+    def get_and_process_entries(self, marker, shard_num):
+        num_entries = self.max_entries
+        while num_entries >= self.max_entries:
+            num_entries, marker = self._get_and_process_entries(marker,
+                                                                shard_num)
+
+    def _get_and_process_entries(self, marker, shard_num):
+        """
+        sync up to self.max_entries entries, returning number of entries
+        processed and the last marker of the entries processed.
+        """
+        log_entries = client.get_meta_log(self.source_conn, shard_num,
+                                          marker, self.max_entries)
+
+        log.info('shard %d has %d entries after %r', shard_num, len(log_entries),
+                 marker)
+        try:
+            entries = [_meta_entry_from_json(entry) for entry in log_entries]
+        except KeyError:
+            log.error('log conting bad key is: %s', log_entries)
+            raise
+
         mentioned = set([(entry.section, entry.name) for entry in entries])
         for section, name in mentioned:
             self.sync_meta(entry.section, entry.name)
 
+        if entries:
+            try:
+                client.set_worker_bound(self.source_conn, 'metadata',
+                                        shard_num, entries[-1].marker,
+                                        entries[-1].timestamp,
+                                        self.daemon_id)
+                return len(entries), entries[-1].marker
+            except:
+                log.exception('error setting worker bound, may duplicate some work later')
+
+        return 0, ''
+
     def run(self):
         while True:
-            items = self.work_queue.get()
-            if items is None:
+            shard_num = self.work_queue.get()
+            if shard_num is None:
                 log.info('process %s is done. Exiting', self.ident)
                 break
-            shard_num, start_time, end_time = items
-            log.debug('working on shard %s', shard_num)
 
             log.info('%s is processing shard number %d',
                      self.ident, shard_num)
@@ -372,45 +403,34 @@ class MetadataWorkerPartial(MetadataWorker):
                 continue
 
             try:
-                log_entries = client.get_meta_log(self.source_conn, shard_num,
-                                                  start_time, end_time)
-            except client.HttpError as e:
-                log.error('metadata list failed: %s', e)
-                # we hit an error getting the data to sync.
-                # Bail and unlock the log
-                try:
-                    self.release_log_lock(self.local_lock_id,
-                                          self.source_zone, shard_num)
-                except:
-                    log.exception('error unlocking log, continuing anyway '
-                                  'since lock will timeout')
-                self.result_queue.put((RESULT_ERROR, shard_num))
-                continue
-
-            log.info('shard %d has %d entries', shard_num, len(log_entries))
-            try:
-                entries = [_meta_entry_from_json(entry) for entry in log_entries]
-            except KeyError:
-                log.exception('error reading metadata entry, skipping shard')
-                log.error('log was: %s', log_entries)
-                continue
-
-            try:
-                self.process_entries(entries)
+                marker, time = client.get_min_worker_bound(self.source_conn,
+                                                           'metadata',
+                                                           shard_num)
+                log.debug('oldest marker and time for shard %d are: "%s" "%s"',
+                          shard_num, marker, time)
             except Exception as e:
-                log.exception('error processing log entries for shard %d',
+                log.exception('error getting worker bound for shard %d',
                               shard_num)
-                self.release_log_lock(self.local_lock_id,
-                                      self.source_zone, shard_num)
-                self.result_queue.put((RESULT_ERROR, shard_num))
+                self.result.queue.put((RESULT_ERROR, shard_num))
                 continue
+
+            result = RESULT_SUCCESS
+            try:
+                self.get_and_process_entries(marker, shard_num)
+            except:
+                log.exception('syncing entries from %s for shard %d failed',
+                              marker, shard_num)
+                result = RESULT_ERROR
 
             # finally, unlock the log
-            self.release_log_lock(self.local_lock_id, \
-                                  self.source_zone, shard_num)
+            try:
+                self.release_log_lock(self.local_lock_id,
+                                      self.source_zone, shard_num)
+            except:
+                log.exception('error unlocking log, continuing anyway '
+                              'since lock will timeout')
 
-            self.result_queue.put((RESULT_SUCCESS, shard_num))
-
+            self.result_queue.put((result, shard_num))
             log.info('finished processing shard %d', shard_num)
 
 class MetadataWorkerFull(MetadataWorker):

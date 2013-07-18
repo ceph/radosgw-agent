@@ -142,6 +142,44 @@ def num_log_shards(connection, shard_type):
     out = request(connection, 'get', '/admin/log', dict(type=shard_type))
     return out['num_objects']
 
+def set_worker_bound(connection, type_, shard_num, marker, timestamp,
+                     daemon_id):
+    return request(
+        connection, 'post', '/admin/replica_log',
+        params=dict(
+            type=type_,
+            id=shard_num,
+            marker=marker,
+            time=timestamp,
+            daemon_id=daemon_id,
+            ),
+        data='[]',
+        special_first_param='work_bound',
+        )
+
+def del_worker_bound(connection, type_, shard_num, daemon_id):
+    return request(
+        connection, 'delete', '/admin/replica_log',
+        params=dict(
+            type=type_,
+            id=shard_num,
+            daemon_id=daemon_id,
+            ),
+        special_first_param='work_bound',
+        expect_json=False,
+        )
+
+def get_min_worker_bound(connection, type_, shard_num):
+    out = request(
+        connection, 'get', '/admin/replica_log',
+        params=dict(
+            type=type_,
+            id=shard_num,
+            ),
+        special_first_param='bounds',
+        )
+    return out['marker'], out['oldest_time']
+
 def connection(endpoint, is_secure=False, debug=None):
     return S3Connection(
         aws_access_key_id=endpoint.access_key,
