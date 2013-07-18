@@ -1,6 +1,7 @@
 import argparse
 import contextlib
 import logging
+import time
 import yaml
 
 from radosgw_agent import client
@@ -133,6 +134,12 @@ def parse_args():
         help='maximum number of log entries to process at once during '
         'continuous sync',
         )
+    parser.add_argument(
+        '--partial-sync-period',
+        type=check_positive_int,
+        default=360,
+        help='seconds to wait between syncs',
+        )
     return parser.parse_args(remaining)
 
 def main():
@@ -165,4 +172,12 @@ def main():
     if args.sync_scope == 'full':
         syncer.sync_full(args.num_workers, args.lock_timeout)
     else:
-        syncer.sync_partial(args.num_workers, args.lock_timeout)
+        while True:
+            try:
+                syncer.sync_partial(args.num_workers, args.lock_timeout,
+                                    args.max_entries)
+            except:
+                log.exception('error doing partial sync, trying again later')
+            log.debug('waiting %d seconds until next sync',
+                      args.partial_sync_period)
+            time.sleep(args.partial_sync_period)
