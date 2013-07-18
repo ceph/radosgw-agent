@@ -146,11 +146,14 @@ def main():
     args = parse_args()
     log = logging.getLogger()
     log_level = logging.INFO
+    requests_log_level = logging.WARN
     if args.verbose:
         log_level = logging.DEBUG
+        requests_log_level = logging.DEBUG
     elif args.quiet:
         log_level = logging.WARN
     logging.basicConfig(level=log_level)
+    logging.getLogger('requests').setLevel(requests_log_level)
 
     if args.log_file is not None:
         handler = logging.FileHandler(
