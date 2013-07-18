@@ -1,5 +1,3 @@
-import boto
-import boto.s3.connection
 import datetime
 import logging
 import multiprocessing
@@ -15,16 +13,8 @@ class Syncer:
         self._type = type_
         self.src = src
         self.dest = dest
-        self.src_conn = boto.s3.connection.S3Connection(
-            aws_access_key_id=self.src.access_key,
-            aws_secret_access_key=self.src.secret_key,
-            is_secure=False,
-            host=self.src.host,
-            port=self.src.port,
-            calling_format=boto.s3.connection.OrdinaryCallingFormat(),
-            debug=2,
-        )
         self.store = store
+        self.src_conn = client.connection(src)
 
     def sync_partial(self, num_workers, log_lock_time):
         try:

@@ -1,4 +1,3 @@
-import boto
 from collections import namedtuple
 import datetime
 import logging
@@ -34,24 +33,8 @@ class Worker(multiprocessing.Process):
                               str(threading.current_thread()))
 
         # construct the two connection objects
-        self.source_conn = boto.s3.connection.S3Connection(
-            aws_access_key_id=src.access_key,
-            aws_secret_access_key=src.secret_key,
-            is_secure=False,
-            host=src.host,
-            port=src.port,
-            calling_format=boto.s3.connection.OrdinaryCallingFormat(),
-            debug=2,
-            )
-
-        self.dest_conn = boto.s3.connection.S3Connection(
-            aws_access_key_id=dest.access_key,
-            aws_secret_access_key=dest.secret_key,
-            is_secure=False,
-            host=dest.host,
-            port=dest.port,
-            calling_format = boto.s3.connection.OrdinaryCallingFormat(),
-            )
+        self.source_conn = client.connection(src)
+        self.dest_conn = client.connection(dest)
 
     # we explicitly specify the connection to use for the locking here
     # in case we need to lock a non-master log file

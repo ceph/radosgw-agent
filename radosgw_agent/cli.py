@@ -147,7 +147,7 @@ def main():
     src = client.Endpoint(args.src_host, args.src_port, args.src_access_key,
                           args.src_secret_key, args.src_zone)
     dest = client.Endpoint(args.dest_host, args.dest_port, args.dest_access_key,
-                          args.dest_secret_key, args.dest_zone)
+                           args.dest_secret_key, args.dest_zone)
     # TODO: check src and dest zone names and endpoints match the region map
     filename = args.data_file
     if filename is None:
