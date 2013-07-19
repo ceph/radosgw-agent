@@ -135,9 +135,9 @@ def parse_args():
         'continuous sync',
         )
     parser.add_argument(
-        '--partial-sync-period',
+        '--partial-sync-delay',
         type=check_positive_int,
-        default=360,
+        default=20,
         help='seconds to wait between syncs',
         )
     return parser.parse_args(remaining)
