@@ -23,7 +23,6 @@ def parse_args():
         )
     args, remaining = conf_parser.parse_known_args()
     defaults = dict(
-        num_workers=1,
         sync_scope='partial',
         log_lock_time=10,
         )
@@ -102,6 +101,7 @@ def parse_args():
     parser.add_argument(
         '--num-workers',
         default=1,
+        type=check_positive_int,
         help='number of items to sync at once',
         )
     parser.add_argument(
