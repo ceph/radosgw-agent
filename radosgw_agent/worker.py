@@ -1,12 +1,11 @@
 from collections import namedtuple
-import datetime
 import logging
 import multiprocessing
 import os
 import socket
-import threading
 
 from radosgw_agent import client
+from radosgw_agent import lock
 
 log = logging.getLogger(__name__)
 
@@ -16,10 +15,6 @@ RESULT_ERROR = 1
 class Worker(multiprocessing.Process):
     """sync worker to run in its own process"""
 
-    # sleep the prescribed amount of time and then set a bool to true.
-    def flip_log_lock(self):
-        self.relock_log = True
-
     def __init__(self, work_queue, result_queue, log_lock_time,
                  src, dest, **kwargs):
         super(Worker, self).__init__()
@@ -28,44 +23,23 @@ class Worker(multiprocessing.Process):
         self.work_queue = work_queue
         self.result_queue = result_queue
         self.log_lock_time = log_lock_time
+        self.lock = None
 
-        self.local_lock_id = (socket.gethostname() + str(os.getpid()) +
-                              str(threading.current_thread()))
+        self.local_lock_id = socket.gethostname() + str(os.getpid())
 
         # construct the two connection objects
         self.source_conn = client.connection(src)
         self.dest_conn = client.connection(dest)
 
-    # we explicitly specify the connection to use for the locking here
-    # in case we need to lock a non-master log file
-    def acquire_log_lock(self, lock_id, zone_id, shard_num):
-        log.debug('acquiring lock on shard %d', shard_num)
-        try:
-            client.lock_shard(self.source_conn, self._type, shard_num, zone_id,
-                              self.log_lock_time, self.local_lock_id)
-        except client.HttpError as e:
-            log.error('locking shard %d in zone %s failed: %s',
-                     shard_num, zone_id, e)
-            # clear this flag for the next pass
-            self.relock_log = False
-            raise
+    def prepare_lock(self):
+        assert self.lock is None
+        self.lock = lock.Lock(self.source_conn, self.type, self.local_lock_id,
+                              self.log_lock_time, self.source_zone)
+        self.lock.daemon = True
+        self.lock.start()
 
-        # twiddle the boolean flag to false
-        self.relock_log = False
-
-        # then start the timer to twiddle it back to true
-        self.relock_timer = threading.Timer(0.5 * self.log_lock_time, \
-                                            self.flip_log_lock)
-        self.relock_timer.start()
-
-
-    def release_log_lock(self, lock_id, zone_id, shard_num):
-        log.debug('releasing lock on shard %d', shard_num)
-        client.unlock_shard(self.source_conn, self._type, shard_num,
-                            zone_id, self.local_lock_id)
-
-
-MetadataEntry = namedtuple('MetadataEntry', ['section', 'name', 'marker', 'timestamp'])
+MetadataEntry = namedtuple('MetadataEntry',
+                           ['section', 'name', 'marker', 'timestamp'])
 
 def _meta_entry_from_json(entry):
     return MetadataEntry(
@@ -79,7 +53,7 @@ class MetadataWorker(Worker):
 
     def __init__(self, *args, **kwargs):
         super(MetadataWorker, self).__init__(*args, **kwargs)
-        self._type = 'metadata'
+        self.type = 'metadata'
 
     def sync_meta(self, section, name):
         log.debug('syncing metadata type %s key "%s"', section, name)
@@ -143,6 +117,7 @@ class MetadataWorkerPartial(MetadataWorker):
         return 0, ''
 
     def run(self):
+        self.prepare_lock()
         while True:
             shard_num = self.work_queue.get()
             if shard_num is None:
@@ -154,19 +129,22 @@ class MetadataWorkerPartial(MetadataWorker):
 
             # first, lock the log
             try:
-                self.acquire_log_lock(self.local_lock_id, self.source_zone,
-                                      shard_num)
+                self.lock.set_shard(shard_num)
+                self.lock.acquire()
             except client.NotFound:
                 # no log means nothing changed in this time period
+                self.lock.unset_shard()
                 self.result_queue.put((RESULT_SUCCESS, shard_num))
                 continue
             except client.HttpError as e:
                 log.info('error locking shard %d log, assuming'
                          ' it was processed by someone else and skipping: %s',
                          shard_num, e)
+                self.lock.unset_shard()
                 self.result_queue.put((RESULT_ERROR, shard_num))
                 continue
 
+            result = RESULT_SUCCESS
             try:
                 marker, time = client.get_min_worker_bound(self.source_conn,
                                                            'metadata',
@@ -174,16 +152,16 @@ class MetadataWorkerPartial(MetadataWorker):
                 log.debug('oldest marker and time for shard %d are: %r %r',
                           shard_num, marker, time)
             except client.NotFound:
+                # if no worker bounds have been set, start from the beginning
                 marker, time = '', '1970-01-01 00:00:00'
             except Exception as e:
                 log.exception('error getting worker bound for shard %d',
                               shard_num)
-                self.result.queue.put((RESULT_ERROR, shard_num))
-                continue
+                result = RESULT_ERROR
 
-            result = RESULT_SUCCESS
             try:
-                self.get_and_process_entries(marker, shard_num)
+                if result == RESULT_SUCCESS:
+                    self.get_and_process_entries(marker, shard_num)
             except:
                 log.exception('syncing entries from %s for shard %d failed',
                               marker, shard_num)
@@ -191,8 +169,9 @@ class MetadataWorkerPartial(MetadataWorker):
 
             # finally, unlock the log
             try:
-                self.release_log_lock(self.local_lock_id,
-                                      self.source_zone, shard_num)
+                self.lock.release_and_clear()
+            except lock.LockBroken as e:
+                log.warn('work may be duplicated: %s', e)
             except:
                 log.exception('error unlocking log, continuing anyway '
                               'since lock will timeout')
