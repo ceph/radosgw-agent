@@ -182,5 +182,5 @@ def main():
             except:
                 log.exception('error doing partial sync, trying again later')
             log.debug('waiting %d seconds until next sync',
-                      args.partial_sync_period)
-            time.sleep(args.partial_sync_period)
+                      args.partial_sync_delay)
+            time.sleep(args.partial_sync_delay)
