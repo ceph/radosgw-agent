@@ -56,10 +56,12 @@ class MetadataWorker(Worker):
         self.type = 'metadata'
 
     def sync_meta(self, section, name):
-        log.debug('syncing metadata type %s key "%s"', section, name)
+        log.debug('syncing metadata type %s key %r', section, name)
         try:
             metadata = client.get_metadata(self.source_conn, section, name)
         except client.NotFound:
+            log.debug('%s %r not found on master, deleting from secondary',
+                      section, name)
             try:
                 client.delete_metadata(self.dest_conn, section, name)
             except client.NotFound:
@@ -102,7 +104,7 @@ class MetadataWorkerPartial(MetadataWorker):
 
         mentioned = set([(entry.section, entry.name) for entry in entries])
         for section, name in mentioned:
-            self.sync_meta(entry.section, entry.name)
+            self.sync_meta(section, name)
 
         if entries:
             try:
