@@ -1,3 +1,4 @@
+from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 import argparse
 import contextlib
 import logging
@@ -140,7 +141,62 @@ def parse_args():
         default=20,
         help='seconds to wait between syncs',
         )
+    parser.add_argument(
+        '--test-server-host',
+        # host to run a simple http server for testing the sync agent on,
+        help=argparse.SUPPRESS,
+        )
+    parser.add_argument(
+        '--test-server-port',
+        # port to run a simple http server for testing the sync agent on,
+        type=check_positive_int,
+        default=8080,
+        help=argparse.SUPPRESS,
+        )
     return parser.parse_args(remaining)
+
+class TestHandler(BaseHTTPRequestHandler):
+    """HTTP handler for testing radosgw-agent.
+
+    This should never be used outside of testing.
+    """
+    syncer = None
+    num_workers = None
+    lock_timeout = None
+    max_entries = None
+
+    def do_POST(self):
+        log = logging.getLogger(__name__)
+        status = 200
+        resp = None
+        if self.path.startswith('/metadata/full'):
+            try:
+                TestHandler.syncer.sync_full(TestHandler.num_workers,
+                                             TestHandler.lock_timeout)
+            except Exception as e:
+                log.exception('error doing full sync')
+                status = 500
+                resp = str(e)
+        elif self.path.startswith('/metadata/partial'):
+            try:
+                TestHandler.syncer.sync_partial(TestHandler.num_workers,
+                                                TestHandler.lock_timeout,
+                                                TestHandler.max_entries)
+            except Exception as e:
+                log.exception('error doing partial sync')
+                status = 500
+                resp = str(e)
+        else:
+            log.warn('invalid request, ignoring')
+            status = 400
+            resp = 'bad path'
+
+        self.log_request(status, len(resp))
+        if status >= 400:
+            self.send_error(status, resp)
+        else:
+            self.send_response(status)
+            self.end_headers()
 
 def main():
     args = parse_args()
@@ -172,7 +228,17 @@ def main():
                            args.dest_secret_key, args.dest_zone)
     # TODO: check src and dest zone names and endpoints match the region map
     syncer = sync.Syncer('metadata', src, dest, args.daemon_id)
-    if args.sync_scope == 'full':
+
+    if args.test_server_host:
+        log.warn('TEST MODE - do not run unless you are testing this program')
+        TestHandler.syncer = syncer
+        TestHandler.num_workers = args.num_workers
+        TestHandler.lock_timeout = args.lock_timeout
+        TestHandler.max_entries = args.max_entries
+        server = HTTPServer((args.test_server_host, args.test_server_port),
+                            TestHandler)
+        server.serve_forever()
+    elif args.sync_scope == 'full':
         syncer.sync_full(args.num_workers, args.lock_timeout)
     else:
         while True:
