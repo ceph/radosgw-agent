@@ -168,7 +168,7 @@ class TestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         log = logging.getLogger(__name__)
         status = 200
-        resp = None
+        resp = ''
         if self.path.startswith('/metadata/full'):
             try:
                 TestHandler.syncer.sync_full(TestHandler.num_workers,
