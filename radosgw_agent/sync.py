@@ -14,6 +14,7 @@ class Syncer:
         self.src = src
         self.dest = dest
         self.src_conn = client.connection(src)
+        self.dest_conn = client.connection(dest)
         self.daemon_id = daemon_id
 
     def sync_partial(self, num_workers, log_lock_time, max_entries):
@@ -141,7 +142,7 @@ class Syncer:
                       len(errors), errors)
         else:
             for shard_num, marker, timestamp in shard_info:
-                client.set_worker_bound(self.src_conn, 'metadata', shard_num,
+                client.set_worker_bound(self.dest_conn, 'metadata', shard_num,
                                         marker, timestamp, self.daemon_id)
-                client.del_worker_bound(self.src_conn, 'metadata', shard_num,
+                client.del_worker_bound(self.dest_conn, 'metadata', shard_num,
                                         self.daemon_id)

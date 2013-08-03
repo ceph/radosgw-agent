@@ -108,7 +108,7 @@ class MetadataWorkerPartial(MetadataWorker):
 
         if entries:
             try:
-                client.set_worker_bound(self.source_conn, 'metadata',
+                client.set_worker_bound(self.dest_conn, 'metadata',
                                         shard_num, entries[-1].marker,
                                         entries[-1].timestamp,
                                         self.daemon_id)
@@ -148,7 +148,7 @@ class MetadataWorkerPartial(MetadataWorker):
 
             result = RESULT_SUCCESS
             try:
-                marker, time = client.get_min_worker_bound(self.source_conn,
+                marker, time = client.get_min_worker_bound(self.dest_conn,
                                                            'metadata',
                                                            shard_num)
                 log.debug('oldest marker and time for shard %d are: %r %r',
