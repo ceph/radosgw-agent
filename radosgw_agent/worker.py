@@ -73,12 +73,12 @@ class MetadataWorker(Worker):
         else:
             client.update_metadata(self.dest_conn, section, name, metadata)
 
-class MetadataWorkerPartial(MetadataWorker):
+class MetadataWorkerIncremental(MetadataWorker):
 
     def __init__(self, *args, **kwargs):
         self.daemon_id = kwargs['daemon_id']
         self.max_entries = kwargs['max_entries']
-        super(MetadataWorkerPartial, self).__init__(*args, **kwargs)
+        super(MetadataWorkerIncremental, self).__init__(*args, **kwargs)
 
     def get_and_process_entries(self, marker, shard_num):
         num_entries = self.max_entries

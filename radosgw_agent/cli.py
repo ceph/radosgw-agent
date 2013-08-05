@@ -24,7 +24,7 @@ def parse_args():
         )
     args, remaining = conf_parser.parse_known_args()
     defaults = dict(
-        sync_scope='partial',
+        sync_scope='incremental',
         log_lock_time=10,
         )
     if args.conf is not None:
@@ -107,8 +107,8 @@ def parse_args():
         )
     parser.add_argument(
         '--sync-scope',
-        choices=['full', 'partial'],
-        default='partial',
+        choices=['full', 'incremental'],
+        default='incremental',
         help='synchronize everything (for a new region) or only things that '
              'have changed since the last run'
         )
@@ -136,7 +136,7 @@ def parse_args():
         'continuous sync',
         )
     parser.add_argument(
-        '--partial-sync-delay',
+        '--incremental-sync-delay',
         type=check_positive_int,
         default=20,
         help='seconds to wait between syncs',
@@ -177,13 +177,13 @@ class TestHandler(BaseHTTPRequestHandler):
                 log.exception('error doing full sync')
                 status = 500
                 resp = str(e)
-        elif self.path.startswith('/metadata/partial'):
+        elif self.path.startswith('/metadata/incremental'):
             try:
-                TestHandler.syncer.sync_partial(TestHandler.num_workers,
+                TestHandler.syncer.sync_incremental(TestHandler.num_workers,
                                                 TestHandler.lock_timeout,
                                                 TestHandler.max_entries)
             except Exception as e:
-                log.exception('error doing partial sync')
+                log.exception('error doing incremental sync')
                 status = 500
                 resp = str(e)
         else:
@@ -243,10 +243,10 @@ def main():
     else:
         while True:
             try:
-                syncer.sync_partial(args.num_workers, args.lock_timeout,
+                syncer.sync_incremental(args.num_workers, args.lock_timeout,
                                     args.max_entries)
             except:
-                log.exception('error doing partial sync, trying again later')
+                log.exception('error doing incremental sync, trying again later')
             log.debug('waiting %d seconds until next sync',
-                      args.partial_sync_delay)
-            time.sleep(args.partial_sync_delay)
+                      args.incremental_sync_delay)
+            time.sleep(args.incremental_sync_delay)

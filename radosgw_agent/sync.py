@@ -17,7 +17,7 @@ class Syncer:
         self.dest_conn = client.connection(dest)
         self.daemon_id = daemon_id
 
-    def sync_partial(self, num_workers, log_lock_time, max_entries):
+    def sync_incremental(self, num_workers, log_lock_time, max_entries):
         try:
             num_shards = client.num_log_shards(self.src_conn, self._type)
         except:
@@ -31,9 +31,9 @@ class Syncer:
 
         # create the worker processes
         if self._type == 'data':
-            worker_cls = worker.DataWorkerPartial
+            worker_cls = worker.DataWorkerIncremental
         else:
-            worker_cls = worker.MetadataWorkerPartial
+            worker_cls = worker.MetadataWorkerIncremental
         processes = [worker_cls(workQueue,
                                 resultQueue,
                                 log_lock_time,
@@ -46,7 +46,7 @@ class Syncer:
             process.daemon = True
             process.start()
 
-        log.info('Starting partial sync')
+        log.info('Starting incremental sync')
         # enqueue the shards to be synced
         for i in xrange(num_shards):
             workQueue.put(i)
