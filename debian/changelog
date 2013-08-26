@@ -1,0 +1,5 @@
+radosgw-agent (1.0-1) stable; urgency=low
+
+  * Initial release 
+
+ -- Gary Lowell <gary.lowell@inktank.com>  Mon, 26 Aug 2013 09:19:47 -0700

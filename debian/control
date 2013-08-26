@@ -1,0 +1,18 @@
+Source: radosgw-agent
+Maintainer: Sage Weil <sage@newdream.net>
+Uploaders: Sage Weil <sage@newdream.net>
+Section: admin
+Priority: optional
+Build-Depends: debhelper (>= 8), python-setuptools
+X-Python-Version: >= 2.4
+Standards-Version: 3.9.2
+Homepage: http://ceph.com/
+
+Package: radosgw-agent
+Architecture: all
+Depends: python,
+         python-argparse,
+         python-setuptools,
+         ${misc:Depends},
+         ${python:Depends}
+Description:  Rados gateway agents.
