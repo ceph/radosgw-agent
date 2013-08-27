@@ -1,6 +1,8 @@
 from collections import namedtuple
+import hashlib
 import logging
 import multiprocessing
+import requests
 import os
 import socket
 
@@ -11,6 +13,8 @@ log = logging.getLogger(__name__)
 
 RESULT_SUCCESS = 0
 RESULT_ERROR = 1
+RESULT_CONNECTION_ERROR = 2
+MAX_CONCURRENT_OPS = 5
 
 class Worker(multiprocessing.Process):
     """sync worker to run in its own process"""
@@ -48,6 +52,166 @@ def _meta_entry_from_json(entry):
         entry['id'],
         entry['timestamp'],
         )
+
+class DataWorker(Worker):
+
+    def __init__(self, *args, **kwargs):
+        super(DataWorker, self).__init__(*args, **kwargs)
+        self.type = 'data'
+
+    def get_new_op_id(self):
+        self.op_id = self.op_id + 1
+        return self.op_id
+
+    def sync_object(self, connection, bucket, key, src_zone, client_id):
+        op_id = self.get_new_op_id()
+        client.sync_object_intra_region(connection, bucket, key, src_zone, client_id, op_id)
+        return op_id
+
+    # TODO
+    # use the op_id to keep track of on-going copies
+    def sync_data(self, bucket_name):
+        log.debug('syncing bucket {bucket}'.format(bucket=bucket_name))
+
+        objects = client.list_objects_in_bucket(self.source_conn, bucket_name)
+        counter = 0
+
+        # sync each object in the list.
+        # We only want to have X in flight at once, so use the op_id to track when 
+        # individual operations finish.  
+        inflight_ops = []
+        for key in objects:
+            counter = counter + 1
+            # sync each object
+            log.debug('syncing object {bucket}:{key}'.format(bucket=bucket_name,key=key))
+            op_id = self.sync_object(self.dest_conn, key.bucket.name, key.name, self.source_zone, self.daemon_id)
+            inflight_ops.append(op_id)
+            # Do not progress to the next key until there are less than the maximum
+            # number of syncs in-flight
+            #while(len(inflight_ops) == MAX_CONCURRENT_OPS):
+                # check each of the inflight ops. If they've been completed, remove them from the in-flight list
+                #for op_id in inflight_ops:
+
+        # Once all the copy commands are issued, track op_ids until they're all done
+        for op_id in inflight_ops:
+            op_ids = client.list_ops_for_client(self.dest_conn, self.daemon_id, op_id)
+            log.debug('jbuck, op_ids: {op_ids}'.format(op_ids=op_ids))
+
+        log.debug('bucket {bucket} has {num_objects} object'.format(
+                  bucket=bucket_name,num_objects=counter))
+
+class DataWorkerIncremental(DataWorker):
+
+    def __init__(self, *args, **kwargs):
+        self.daemon_id = kwargs['daemon_id']
+        self.max_entries = kwargs['max_entries']
+        self.op_id = 0
+        super(DataWorkerIncremental, self).__init__(*args, **kwargs)
+
+    def get_and_process_entries(self, marker, shard_num):
+        pass
+
+    def _get_and_process_entries(self, marker, shard_num):
+        pass
+
+    def run(self):
+        pass
+
+class DataWorkerFull(DataWorker):
+
+    def __init__(self, *args, **kwargs):
+        self.daemon_id = kwargs['daemon_id']
+        self.op_id = 0
+        super(DataWorkerFull, self).__init__(*args, **kwargs)
+
+    def run(self):
+        self.prepare_lock()
+        num_data_shards = client.num_log_shards(self.source_conn, 'data')
+
+        while True:
+            shard_num = self.work_queue.get()
+            if shard_num is None:
+                log.info('No more entries in queue, exiting')
+                break
+
+            log.info('%s is processing shard %d', self.ident, shard_num)
+
+            # lock the log
+            try:
+                self.lock.set_shard(shard_num)
+                self.lock.acquire()
+            except client.NotFound:
+                self.lock.unset_shard()
+                self.result_queue.put((RESULT_SUCCESS, shard_num))
+                continue
+            except client.HttpError as e:
+                log.info('error locking shard %d log, assuming'
+                         ' it was processed by someone else and skipping: %s',
+                         shard_num, e)
+                self.lock.unset_shard()
+                self.result_queue.put((RESULT_ERROR, shard_num))
+                continue
+
+            # set a marker in the replica log 
+            worker_bound_info = None
+            buckets_to_sync = []
+            try:
+                worker_bound_info = client.get_worker_bound(self.dest_conn, 'data', shard_num)
+                log.debug('data full sync shard {i} data log is {data}'.format(i=shard_num,data=worker_bound_info))
+                # determine whether there's a marker string with NEEDSSYNC and with 
+                # our daemon_id. If so, sync it the bucket(s) that match
+            except Exception as e:
+                log.exception('could not set worker bound for shard_num %d: %s',
+                              shard_num, e)
+                self.lock.unset_shard()
+                self.result_queue.put((RESULT_ERROR, shard_num))
+                continue
+
+            # set the default result
+            result = RESULT_SUCCESS
+
+
+            log_bucket_name = ""
+#            try:
+#               for bucket_name in buckets_to_sync:
+#                   log.info('bucket %s is processed as part of shard %d', bucket_name, shard_num)
+#                   self.sync_data(bucket_name)
+#
+#                result = RESULT_SUCCESS
+#            except Exception as e:
+#                log.exception('could not sync shard_num %d failed on bucket %s: %s',
+#                              shard_num, log_bucket_name, e)
+#                self.lock.unset_shard()
+#                self.result_queue.put((RESULT_ERROR, shard_num))
+#                continue
+#
+#            # TODO this may need to do a set the omits the synced buckets and then delete the entries for the 
+#            # synced buckets? The replica log usage is still pretty ill-defined
+#            # remove the data replica log entry. If we have gotten to this part, all 
+#            # the pertinent info should be valid.
+#            try:
+#                client.del_worker_bound(self.dest_conn, 'data', shard_num,
+#                                        self.daemon_id)
+#            except Exception as e:
+#                log.exception('could not delete worker bound for shard_num %d: %s',
+#                              shard_num, e)
+#                self.lock.unset_shard()
+#                self.result_queue.put((RESULT_ERROR, shard_num))
+#                continue
+
+            # TODO
+            # update the bucket index log (trim it)
+
+            # finally, unlock the log
+            try:
+                self.lock.release_and_clear()
+            except lock.LockBroken as e:
+                log.warn('work may be duplicated: %s', e)
+            except:
+                log.exception('error unlocking data log, continuing anyway '
+                              'since lock will timeout')
+
+            self.result_queue.put((result, shard_num))
 
 class MetadataWorker(Worker):
 
@@ -155,12 +319,19 @@ class MetadataWorkerIncremental(MetadataWorker):
                 self.result_queue.put((RESULT_SUCCESS, shard_num))
                 continue
             except client.HttpError as e:
-                log.info('error locking shard %d log, assuming'
+                log.exception('error locking shard %d log, assuming'
                          ' it was processed by someone else and skipping: %s',
                          shard_num, e)
                 self.lock.unset_shard()
                 self.result_queue.put((RESULT_ERROR, shard_num))
                 continue
+            except requests.exceptions.ConnectionError as e:
+                log.exception('ConnectionError encountered. Bailing out of'
+                              ' processing loop for shard %d. %s', 
+                              shard_num, e)
+                self.lock.unset_shard()
+                self.result_queue.put((RESULT_CONNECTION_ERROR, shard_num))
+                break
 
             result = RESULT_SUCCESS
             try:
@@ -172,6 +343,13 @@ class MetadataWorkerIncremental(MetadataWorker):
             except client.NotFound:
                 # if no worker bounds have been set, start from the beginning
                 marker, time = '', '1970-01-01 00:00:00'
+            except requests.exceptions.ConnectionError as e:
+                log.exception('ConnectionError encountered. Bailing out of'
+                              ' processing loop for shard %d. %s', 
+                              shard_num, e)
+                self.lock.unset_shard()
+                self.result_queue.put((RESULT_CONNECTION_ERROR, shard_num))
+                break
             except Exception as e:
                 log.exception('error getting worker bound for shard %d',
                               shard_num)
@@ -180,6 +358,13 @@ class MetadataWorkerIncremental(MetadataWorker):
             try:
                 if result == RESULT_SUCCESS:
                     self.get_and_process_entries(marker, shard_num)
+            except requests.exceptions.ConnectionError as e:
+                log.exception('ConnectionError encountered. Bailing out of'
+                              ' processing loop for shard %d. %s', 
+                              shard_num, e)
+                self.lock.unset_shard()
+                self.result_queue.put((RESULT_CONNECTION_ERROR, shard_num))
+                break
             except:
                 log.exception('syncing entries from %s for shard %d failed',
                               marker, shard_num)

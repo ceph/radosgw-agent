@@ -93,7 +93,32 @@ def get_metadata_sections(connection):
     return request(connection, 'get', '/admin/metadata')
 
 def list_metadata_keys(connection, section):
-    return request(connection, 'get', '/admin/metadata/' + section)
+    return request(connection, 'get', '/admin/metadata/' + section) 
+
+def list_ops_for_client(connection, client_id, op_id):
+    return request(connection, 'get', '/admin/opstate/',
+                   params={
+                      'client_id':client_id,
+                      'op_id':op_id,
+                      }
+                   )
+
+def get_bucket_list(connection):
+    return list_metadata_keys(connection, 'bucket')
+
+def list_objects_in_bucket(connection, bucket_name):
+    # use the boto library to do this
+    bucket = connection.get_bucket(bucket_name)
+    return bucket.list()
+
+def sync_object_intra_region(connection, bucket_name, object_name, src_zone, client_id, op_id):
+    return request(connection, 'put', '/{bucket_name}/{object_name}'.format(bucket_name=bucket_name,object_name=object_name),
+                   params={
+                       'rgwx-source-zone': src_zone,
+                       'rgwx-client-id': client_id,
+                       'rgwx-op-id': op_id,
+                       },
+                   expect_json=False)
 
 def lock_shard(connection, lock_type, shard_num, zone_id, timeout, locker_id):
     return request(connection, 'post', '/admin/log',
@@ -128,6 +153,16 @@ def get_meta_log(connection, shard_num, marker, max_entries):
                        },
                    )
 
+def get_data_log(connection, shard_num, marker, max_entries):
+    return request(connection, 'get', '/admin/log',
+                   params={
+                       'type': 'data',
+                       'id': shard_num,
+                       'marker': marker,
+                       'max-entries': max_entries,
+                       },
+                   )
+
 def get_log_info(connection, log_type, shard_num):
     return request(
         connection, 'get', '/admin/log',
@@ -143,7 +178,7 @@ def num_log_shards(connection, shard_type):
     return out['num_objects']
 
 def set_worker_bound(connection, type_, shard_num, marker, timestamp,
-                     daemon_id):
+                     daemon_id, data=[]):
     return request(
         connection, 'post', '/admin/replica_log',
         params=dict(
@@ -153,7 +188,7 @@ def set_worker_bound(connection, type_, shard_num, marker, timestamp,
             time=timestamp,
             daemon_id=daemon_id,
             ),
-        data='[]',
+        data=json.dumps(data),
         special_first_param='work_bound',
         )
 
@@ -167,6 +202,16 @@ def del_worker_bound(connection, type_, shard_num, daemon_id):
             ),
         special_first_param='work_bound',
         expect_json=False,
+        )
+
+def get_worker_bound(connection, type_, shard_num):
+    return request(
+        connection, 'get', '/admin/replica_log',
+        params=dict(
+            type=type_,
+            id=shard_num,
+            ),
+        special_first_param='work_bound',
         )
 
 def get_min_worker_bound(connection, type_, shard_num):
