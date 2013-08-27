@@ -50,6 +50,11 @@ def parse_args():
         help='be less verbose',
         )
     parser.add_argument(
+        '--data',
+        action='store_true', dest='data',
+        help='sync data',
+        )
+    parser.add_argument(
         '--src-access-key',
         required='src_access_key' not in defaults,
         help='access key for source zone system user',
@@ -171,17 +176,17 @@ class TestHandler(BaseHTTPRequestHandler):
         resp = ''
         if self.path.startswith('/metadata/full'):
             try:
-                TestHandler.syncer.sync_full(TestHandler.num_workers,
-                                             TestHandler.lock_timeout)
+                TestHandler.syncer.metadata_sync_full(TestHandler.num_workers,
+                                                      TestHandler.lock_timeout)
             except Exception as e:
                 log.exception('error doing full sync')
                 status = 500
                 resp = str(e)
         elif self.path.startswith('/metadata/incremental'):
             try:
-                TestHandler.syncer.sync_incremental(TestHandler.num_workers,
-                                                TestHandler.lock_timeout,
-                                                TestHandler.max_entries)
+                TestHandler.syncer.metadata_sync_incremental(TestHandler.num_workers,
+                                                             TestHandler.lock_timeout,
+                                                             TestHandler.max_entries)
             except Exception as e:
                 log.exception('error doing incremental sync')
                 status = 500
@@ -226,8 +231,15 @@ def main():
                           args.src_secret_key, args.src_zone)
     dest = client.Endpoint(args.dest_host, args.dest_port, args.dest_access_key,
                            args.dest_secret_key, args.dest_zone)
-    # TODO: check src and dest zone names and endpoints match the region map
-    syncer = sync.Syncer('metadata', src, dest, args.daemon_id)
+
+    if args.data:
+        # TODO: check src and dest zone names and endpoints match the region map
+        syncer = sync.Syncer('data', src, dest, args.daemon_id)
+	      log.info('syncing data')
+    else:
+        # TODO: check src and dest zone names and endpoints match the region map
+        syncer = sync.Syncer('metadata', src, dest, args.daemon_id)
+	      log.info('syncing metadata')
 
     if args.test_server_host:
         log.warn('TEST MODE - do not run unless you are testing this program')
