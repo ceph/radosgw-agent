@@ -65,13 +65,20 @@ class MetadataWorker(Worker):
             try:
                 client.delete_metadata(self.dest_conn, section, name)
             except client.NotFound:
-                pass
+                # Since this error is handled appropriately, return success
+                return RESULT_SUCCESS 
         except client.HttpError as e:
             log.error('error getting metadata for %s "%s": %s',
                       section, name, e)
-            raise
+            return RESULT_ERROR             
         else:
-            client.update_metadata(self.dest_conn, section, name, metadata)
+            try:
+                client.update_metadata(self.dest_conn, section, name, metadata)
+                return RESULT_SUCCESS 
+            except client.HttpError as e:
+                log.error('error getting metadata for %s "%s": %s',
+                          section, name, e)
+                return RESULT_ERROR             
 
 class MetadataWorkerIncremental(MetadataWorker):
 
@@ -102,11 +109,16 @@ class MetadataWorkerIncremental(MetadataWorker):
             log.error('log conting bad key is: %s', log_entries)
             raise
 
+        error_encountered = False
         mentioned = set([(entry.section, entry.name) for entry in entries])
         for section, name in mentioned:
-            self.sync_meta(section, name)
+            sync_result = self.sync_meta(section, name)
+            if sync_result == RESULT_ERROR:
+                error_encountered = True
 
-        if entries:
+        # Only set worker bounds if there was data synced and no 
+        # errors were encountered
+        if entries and not error_encountered:
             try:
                 client.set_worker_bound(self.dest_conn, 'metadata',
                                         shard_num, entries[-1].marker,
@@ -114,7 +126,11 @@ class MetadataWorkerIncremental(MetadataWorker):
                                         self.daemon_id)
                 return len(entries), entries[-1].marker
             except:
-                log.exception('error setting worker bound, may duplicate some work later')
+                log.exception('error setting worker bound for shard {shard_num},'
+                              ' may duplicate some work later'.format(shard_num=shard_num))
+        elif entries and error_encountered:
+            log.error('Error encountered while syncing shard {shard_num}.'
+                      'Not setting worker bound, may duplicate some work later'.format(shard_num=shard_num))
 
         return 0, ''
 
