@@ -1,6 +1,7 @@
 from collections import namedtuple
 import logging
 import multiprocessing
+import requests
 import os
 import socket
 
@@ -11,6 +12,7 @@ log = logging.getLogger(__name__)
 
 RESULT_SUCCESS = 0
 RESULT_ERROR = 1
+RESULT_CONNECTION_ERROR = 2
 
 class Worker(multiprocessing.Process):
     """sync worker to run in its own process"""
@@ -155,12 +157,19 @@ class MetadataWorkerIncremental(MetadataWorker):
                 self.result_queue.put((RESULT_SUCCESS, shard_num))
                 continue
             except client.HttpError as e:
-                log.info('error locking shard %d log, assuming'
+                log.exception('error locking shard %d log, assuming'
                          ' it was processed by someone else and skipping: %s',
                          shard_num, e)
                 self.lock.unset_shard()
                 self.result_queue.put((RESULT_ERROR, shard_num))
                 continue
+            except requests.exceptions.ConnectionError as e:
+                log.exception('ConnectionError encountered. Bailing out of'
+                              ' processing loop for shard %d. %s', 
+                              shard_num, e)
+                self.lock.unset_shard()
+                self.result_queue.put((RESULT_CONNECTION_ERROR, shard_num))
+                break
 
             result = RESULT_SUCCESS
             try:
@@ -172,6 +181,13 @@ class MetadataWorkerIncremental(MetadataWorker):
             except client.NotFound:
                 # if no worker bounds have been set, start from the beginning
                 marker, time = '', '1970-01-01 00:00:00'
+            except requests.exceptions.ConnectionError as e:
+                log.exception('ConnectionError encountered. Bailing out of'
+                              ' processing loop for shard %d. %s', 
+                              shard_num, e)
+                self.lock.unset_shard()
+                self.result_queue.put((RESULT_CONNECTION_ERROR, shard_num))
+                break
             except Exception as e:
                 log.exception('error getting worker bound for shard %d',
                               shard_num)
@@ -180,6 +196,13 @@ class MetadataWorkerIncremental(MetadataWorker):
             try:
                 if result == RESULT_SUCCESS:
                     self.get_and_process_entries(marker, shard_num)
+            except requests.exceptions.ConnectionError as e:
+                log.exception('ConnectionError encountered. Bailing out of'
+                              ' processing loop for shard %d. %s', 
+                              shard_num, e)
+                self.lock.unset_shard()
+                self.result_queue.put((RESULT_CONNECTION_ERROR, shard_num))
+                break
             except:
                 log.exception('syncing entries from %s for shard %d failed',
                               marker, shard_num)

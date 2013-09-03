@@ -57,13 +57,22 @@ class Syncer:
 
         # pull the results out as they are produced
         errors = []
+        connection_errors = []
         for i in xrange(num_shards):
+            # if all processes error out, stop trying to process data
+            if len(connection_errors) == len(processes):
+                log.error('All {num_workers} incremental sync workers have failed.'
+                          ' Ceasing to process shards'.format(num_workers=len(processes)))
+                break
             result, shard_num = resultQueue.get()
             if result == worker.RESULT_SUCCESS:
                 log.debug('synced shard %d', shard_num)
             else:
-                log.error('error syncing shard %d', shard_num)
+                log.error('error on incremental sync of shard %d', shard_num)
                 errors.append(shard_num)
+            if result == worker.RESULT_CONNECTION_ERROR:
+                connection_errors.append(shard_num)
+
             log.info('%d/%d shards processed', i + 1, num_shards)
         if errors:
             log.error('Encountered  errors syncing these %d shards: %s',
@@ -127,14 +136,23 @@ class Syncer:
 
         # pull the results out as they are produced
         errors = []
+        connection_errors = []
         for i in xrange(len(meta_keys)):
+            # if all processes error out, stop trying to process data
+            if len(connection_errors) == len(processes):
+                log.error('All {num_workers} full sync workers have failed.'
+                          ' Ceasing to process shards'.format(num_workers=len(processes)))
+                break
+
             log.info('%d/%d items synced', i, len(meta_keys))
             result, section, name = resultQueue.get()
             if result != worker.RESULT_SUCCESS:
-                log.error('error syncing %s %r', section, name)
+                log.error('error on full sync of %s %r', section, name)
                 errors.append((section, name))
             else:
                 log.debug('synced %s %r', section, name)
+            if result == worker.RESULT_CONNECTION_ERROR:
+                connection_errors.append(shard_num)
         for process in processes:
             process.join()
         if errors:
