@@ -93,13 +93,13 @@ def get_metadata_sections(connection):
     return request(connection, 'get', '/admin/metadata')
 
 def list_metadata_keys(connection, section):
-    return request(connection, 'get', '/admin/metadata/' + section) 
+    return request(connection, 'get', '/admin/metadata/' + section)
 
 def list_ops_for_client(connection, client_id, op_id):
     return request(connection, 'get', '/admin/opstate/',
                    params={
-                      'client_id':client_id,
-                      'op_id':op_id,
+                      'client_id': client_id,
+                      'op_id': op_id,
                       }
                    )
 
