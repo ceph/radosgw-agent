@@ -2,6 +2,7 @@ import boto
 import collections
 import json
 import requests
+import urllib
 
 from boto.connection import AWSAuthConnection
 from boto.s3.connection import S3Connection
@@ -111,8 +112,16 @@ def list_objects_in_bucket(connection, bucket_name):
     bucket = connection.get_bucket(bucket_name)
     return bucket.list()
 
-def sync_object_intra_region(connection, bucket_name, object_name, src_zone, client_id, op_id):
-    return request(connection, 'put', '/{bucket_name}/{object_name}'.format(bucket_name=bucket_name,object_name=object_name),
+def url_safe(component):
+    return urllib.quote(component.encode('utf8'))
+
+def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
+                             client_id, op_id):
+    path = '/{bucket}/{object}'.format(
+        bucket=url_safe(bucket_name),
+        object=url_safe(object_name),
+        )
+    return request(connection, 'put', path,
                    params={
                        'rgwx-source-zone': src_zone,
                        'rgwx-client-id': client_id,
