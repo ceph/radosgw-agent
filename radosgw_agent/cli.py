@@ -235,11 +235,11 @@ def main():
     if args.data:
         # TODO: check src and dest zone names and endpoints match the region map
         syncer = sync.Syncer('data', src, dest, args.daemon_id)
-	      log.info('syncing data')
+        log.info('syncing data')
     else:
         # TODO: check src and dest zone names and endpoints match the region map
         syncer = sync.Syncer('metadata', src, dest, args.daemon_id)
-	      log.info('syncing metadata')
+        log.info('syncing metadata')
 
     if args.test_server_host:
         log.warn('TEST MODE - do not run unless you are testing this program')
