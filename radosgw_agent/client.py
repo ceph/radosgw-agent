@@ -152,20 +152,10 @@ def unlock_shard(connection, lock_type, shard_num, zone_id, locker_id):
                    special_first_param='unlock',
                    expect_json=False)
 
-def get_meta_log(connection, shard_num, marker, max_entries):
+def get_log(connection, log_type, shard_num, marker, max_entries):
     return request(connection, 'get', '/admin/log',
                    params={
-                       'type': 'metadata',
-                       'id': shard_num,
-                       'marker': marker,
-                       'max-entries': max_entries,
-                       },
-                   )
-
-def get_data_log(connection, shard_num, marker, max_entries):
-    return request(connection, 'get', '/admin/log',
-                   params={
-                       'type': 'data',
+                       'type': log_type,
                        'id': shard_num,
                        'marker': marker,
                        'max-entries': max_entries,
@@ -182,21 +172,44 @@ def get_log_info(connection, log_type, shard_num):
         special_first_param='info',
         )
 
+
+def get_bucket_index_marker(connection, bucket_instance):
+    out = request(
+        connection, 'get', '/admin/log',
+        params={
+            'type': 'bucket-index',
+            'bucket-instance': bucket_instance,
+            },
+        special_first_param='info',
+        )
+    return out['max_marker']
+
 def num_log_shards(connection, shard_type):
     out = request(connection, 'get', '/admin/log', dict(type=shard_type))
     return out['num_objects']
 
-def set_worker_bound(connection, type_, shard_num, marker, timestamp,
-                     daemon_id, data=[]):
+def set_worker_bound(connection, type_, marker, timestamp,
+                     daemon_id, data=None, shard_num=None,
+                     bucket_instance=None):
+    if data is None:
+        data = []
+
+    if type_ == 'bucket-index':
+        key = 'bucket-index'
+        value = bucket_instance
+    else:
+        key = 'id'
+        value = shard_num
+
     return request(
         connection, 'post', '/admin/replica_log',
-        params=dict(
-            type=type_,
-            id=shard_num,
-            marker=marker,
-            time=timestamp,
-            daemon_id=daemon_id,
-            ),
+        params={
+            'type': type_,
+            key: value,
+            'marker': marker,
+            'time': timestamp,
+            'daemon_id': daemon_id,
+            },
         data=json.dumps(data),
         special_first_param='work_bound',
         )

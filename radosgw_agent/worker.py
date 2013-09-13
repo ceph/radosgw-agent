@@ -155,7 +155,7 @@ class DataWorkerFull(DataWorker):
             worker_bound_info = None
             buckets_to_sync = []
             try:
-                worker_bound_info = client.get_worker_bound(self.dest_conn, 'data', shard_num)
+                worker_bound_info = client.get_worker_bound(self.dest_conn, 'data', shard_num=shard_num)
                 log.debug('data full sync shard {i} data log is {data}'.format(i=shard_num,data=worker_bound_info))
                 # determine whether there's a marker string with NEEDSSYNC and with 
                 # our daemon_id. If so, sync it the bucket(s) that match
@@ -261,8 +261,8 @@ class MetadataWorkerIncremental(MetadataWorker):
         sync up to self.max_entries entries, returning number of entries
         processed and the last marker of the entries processed.
         """
-        log_entries = client.get_meta_log(self.source_conn, shard_num,
-                                          marker, self.max_entries)
+        log_entries = client.get_log(self.source_conn, 'metadata', shard_num,
+                                     marker, self.max_entries)
 
         log.info('shard %d has %d entries after %r', shard_num, len(log_entries),
                  marker)
@@ -284,9 +284,10 @@ class MetadataWorkerIncremental(MetadataWorker):
         if entries and not error_encountered:
             try:
                 client.set_worker_bound(self.dest_conn, 'metadata',
-                                        shard_num, entries[-1].marker,
+                                        entries[-1].marker,
                                         entries[-1].timestamp,
-                                        self.daemon_id)
+                                        self.daemon_id,
+                                        shard_num=shard_num)
                 return len(entries), entries[-1].marker
             except:
                 log.exception('error setting worker bound for shard {shard_num},'
@@ -336,7 +337,7 @@ class MetadataWorkerIncremental(MetadataWorker):
             try:
                 marker, time = client.get_min_worker_bound(self.dest_conn,
                                                            'metadata',
-                                                           shard_num)
+                                                           shard_num=shard_num)
                 log.debug('oldest marker and time for shard %d are: %r %r',
                           shard_num, marker, time)
             except client.NotFound:
