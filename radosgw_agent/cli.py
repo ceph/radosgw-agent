@@ -4,6 +4,7 @@ import contextlib
 import logging
 import time
 import yaml
+import sys
 
 from radosgw_agent import client
 from radosgw_agent import sync
@@ -165,10 +166,12 @@ class TestHandler(BaseHTTPRequestHandler):
 
     This should never be used outside of testing.
     """
-    syncer = None
     num_workers = None
     lock_timeout = None
     max_entries = None
+    src = None
+    dest = None
+    daemon_id = None
 
     def do_POST(self):
         log = logging.getLogger(__name__)
@@ -176,19 +179,36 @@ class TestHandler(BaseHTTPRequestHandler):
         resp = ''
         if self.path.startswith('/metadata/full'):
             try:
-                TestHandler.syncer.metadata_sync_full(TestHandler.num_workers,
-                                                      TestHandler.lock_timeout)
+		sync.MetaSyncerFull('metadata', src, dest, args.daemon_id).sync(TestHandler.num_workers,
+                                                                                TestHandler.lock_timeout)
             except Exception as e:
-                log.exception('error doing full sync')
+                log.exception('error doing full metadata sync')
                 status = 500
                 resp = str(e)
         elif self.path.startswith('/metadata/incremental'):
             try:
-                TestHandler.syncer.metadata_sync_incremental(TestHandler.num_workers,
-                                                             TestHandler.lock_timeout,
-                                                             TestHandler.max_entries)
+		sync.MetaSyncerInc('metadata', src, dest, args.daemon_id).sync(TestHandler.num_workers,
+                                                                               TestHandler.lock_timeout,
+                                                                               TestHandler.max_entries)
             except Exception as e:
-                log.exception('error doing incremental sync')
+                log.exception('error doing incremental metadata sync')
+                status = 500
+                resp = str(e)
+        elif self.path.startswith('/data/full'):
+            try:
+		sync.DataSyncerFull('data', src, dest, args.daemon_id).sync(TestHandler.num_workers,
+                                                                            TestHandler.lock_timeout)
+            except Exception as e:
+                log.exception('error doing full data sync')
+                status = 500
+                resp = str(e)
+        elif self.path.startswith('/data/incremental'):
+            try:
+		sync.DataSyncerInc('data', src, dest, args.daemon_id).sync(TestHandler.num_workers,
+                                                                           TestHandler.lock_timeout,
+                                                                           TestHandler.max_entries)
+            except Exception as e:
+                log.exception('error doing incremental data sync')
                 status = 500
                 resp = str(e)
         else:
@@ -232,31 +252,41 @@ def main():
     dest = client.Endpoint(args.dest_host, args.dest_port, args.dest_access_key,
                            args.dest_secret_key, args.dest_zone)
 
-    if args.data:
-        # TODO: check src and dest zone names and endpoints match the region map
-        syncer = sync.Syncer('data', src, dest, args.daemon_id)
-        log.info('syncing data')
-    else:
-        # TODO: check src and dest zone names and endpoints match the region map
-        syncer = sync.Syncer('metadata', src, dest, args.daemon_id)
-        log.info('syncing metadata')
-
     if args.test_server_host:
         log.warn('TEST MODE - do not run unless you are testing this program')
-        TestHandler.syncer = syncer
+	TestHandler.src = src
+	TestHandler.dest = dest
+	TestHandler.daemon_id = args.daemon_id
         TestHandler.num_workers = args.num_workers
         TestHandler.lock_timeout = args.lock_timeout
         TestHandler.max_entries = args.max_entries
         server = HTTPServer((args.test_server_host, args.test_server_port),
                             TestHandler)
         server.serve_forever()
-    elif args.sync_scope == 'full':
-        syncer.sync_full(args.num_workers, args.lock_timeout)
+	sys.exit()
+
+    if args.data:
+        # TODO: check src and dest zone names and endpoints match the region map
+        if args.sync_scope == 'full':
+            syncer = sync.DataSyncerFull('data', src, dest, args.daemon_id)
+        else:
+            syncer = sync.DataSyncerInc('data', src, dest, args.daemon_id)
+        log.info('syncing data')
+    else:
+        # TODO: check src and dest zone names and endpoints match the region map
+        if args.sync_scope == 'full':
+            syncer = sync.MetaSyncerFull('metadata', src, dest, args.daemon_id)
+        else:
+            syncer = sync.MetaSyncerInc('metadata', src, dest, args.daemon_id)
+        log.info('syncing metadata')
+
+    if args.sync_scope == 'full':
+        syncer.sync(args.num_workers, args.lock_timeout)
     else:
         while True:
             try:
-                syncer.sync_incremental(args.num_workers, args.lock_timeout,
-                                    args.max_entries)
+                syncer.sync(args.num_workers, args.lock_timeout,
+                            args.max_entries)
             except:
                 log.exception('error doing incremental sync, trying again later')
             log.debug('waiting %d seconds until next sync',
