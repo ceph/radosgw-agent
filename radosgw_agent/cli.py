@@ -194,6 +194,23 @@ class TestHandler(BaseHTTPRequestHandler):
                 log.exception('error doing incremental metadata sync')
                 status = 500
                 resp = str(e)
+        elif self.path.startswith('/data/full'):
+            try:
+		sync.DataSyncerFull('data', src, dest, args.daemon_id).sync(TestHandler.num_workers,
+                                                                            TestHandler.lock_timeout)
+            except Exception as e:
+                log.exception('error doing full data sync')
+                status = 500
+                resp = str(e)
+        elif self.path.startswith('/data/incremental'):
+            try:
+		sync.DataSyncerInc('data', src, dest, args.daemon_id).sync(TestHandler.num_workers,
+                                                                           TestHandler.lock_timeout,
+                                                                           TestHandler.max_entries)
+            except Exception as e:
+                log.exception('error doing incremental data sync')
+                status = 500
+                resp = str(e)
         else:
             log.warn('invalid request, ignoring')
             status = 400
