@@ -26,6 +26,11 @@ setup(
         'requests',
         ] + install_requires,
 
+    test_requires=[
+        'pytest >=2.1.3',
+        'mock >=1.0',
+        ],
+
     entry_points={
         'console_scripts': [
             'radosgw-agent = radosgw_agent.cli:main',

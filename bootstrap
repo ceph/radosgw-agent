@@ -38,5 +38,5 @@ fi
 
 test -d virtualenv || virtualenv virtualenv
 ./virtualenv/bin/python setup.py develop
-./virtualenv/bin/pip install -r requirements.txt
+./virtualenv/bin/pip install -r requirements.txt -r requirements-dev.txt
 test -e radosgw-agent || ln -s ./virtualenv/bin/radosgw-agent .

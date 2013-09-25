@@ -16,6 +16,14 @@ def check_positive_int(string):
         raise argparse.ArgumentTypeError(msg)
     return value
 
+def check_endpoint(endpoint):
+    try:
+        return client.parse_endpoint(endpoint)
+    except client.InvalidProtocol as e:
+        raise argparse.ArgumentTypeError(str(e))
+    except client.InvalidHost as e:
+        raise argparse.ArgumentTypeError(str(e))
+
 def parse_args():
     conf_parser = argparse.ArgumentParser(add_help=False)
     conf_parser.add_argument(
@@ -26,7 +34,7 @@ def parse_args():
     args, remaining = conf_parser.parse_known_args()
     defaults = dict(
         sync_scope='incremental',
-        log_lock_time=10,
+        log_lock_time=20,
         )
     if args.conf is not None:
         with contextlib.closing(args.conf):
@@ -51,11 +59,6 @@ def parse_args():
         help='be less verbose',
         )
     parser.add_argument(
-        '--data',
-        action='store_true', dest='data',
-        help='sync data',
-        )
-    parser.add_argument(
         '--src-access-key',
         required='src_access_key' not in defaults,
         help='access key for source zone system user',
@@ -64,21 +67,6 @@ def parse_args():
         '--src-secret-key',
         required='src_secret_key' not in defaults,
         help='secret key for source zone system user',
-        )
-    parser.add_argument(
-        '--src-host',
-        required='src_host' not in defaults,
-        help='hostname or ip address of source radosgw',
-        )
-    parser.add_argument(
-        '--src-port',
-        type=check_positive_int,
-        help='port number for source radosgw'
-        )
-    parser.add_argument(
-        '--src-zone',
-        required='src_zone' not in defaults,
-        help='availability zone hosted by the source'
         )
     parser.add_argument(
         '--dest-access-key',
@@ -91,19 +79,27 @@ def parse_args():
         help='secret key for destination zone system user',
         )
     parser.add_argument(
-        '--dest-host',
-        required='dest_host' not in defaults,
-        help='hostname or ip address of destination radosgw',
+        'destination',
+        type=check_endpoint,
+        nargs=1 if 'destination' not in defaults else '?',
+        help='radosgw endpoint to which to sync '
+        '(e.g. http://zone2.example.org:8080)',
+        )
+    src_options = parser.add_mutually_exclusive_group(required=False)
+    src_options.add_argument(
+        '--source',
+        type=check_endpoint,
+        help='radosgw endpoint from which to sync '
+        '(e.g. http://zone1.example.org:8080)',
+        )
+    src_options.add_argument(
+        '--src-zone',
+        help='radosgw zone from which to sync',
         )
     parser.add_argument(
-        '--dest-port',
-        type=check_positive_int,
-        help='port number for destination radosgw'
-        )
-    parser.add_argument(
-        '--dest-zone',
-        required='dest_zone' not in defaults,
-        help='availability zone hosted by the destination'
+        '--metadata-only',
+        action='store_true',
+        help='sync bucket and user metadata, but not bucket contents',
         )
     parser.add_argument(
         '--num-workers',
@@ -116,23 +112,18 @@ def parse_args():
         choices=['full', 'incremental'],
         default='incremental',
         help='synchronize everything (for a new region) or only things that '
-             'have changed since the last run'
+             'have changed since the last run',
         )
     parser.add_argument(
         '--lock-timeout',
         type=check_positive_int,
         default=60,
         help='timeout in seconds after which a log segment lock will expire if '
-             'not refreshed'
+             'not refreshed',
         )
     parser.add_argument(
         '--log-file',
         help='where to store log output',
-        )
-    parser.add_argument(
-        '--daemon-id',
-        required='daemon_id' not in defaults,
-        help='name of this incarnation of the radosgw-agent, i.e. host1',
         )
     parser.add_argument(
         '--max-entries',
@@ -144,8 +135,22 @@ def parse_args():
     parser.add_argument(
         '--incremental-sync-delay',
         type=check_positive_int,
-        default=20,
+        default=30,
         help='seconds to wait between syncs',
+        )
+    parser.add_argument(
+        '--object-sync-timeout',
+        type=check_positive_int,
+        default=60 * 60 * 60,
+        help='seconds to wait for an individual object to sync before '
+        'assuming failure',
+        )
+    parser.add_argument(
+        '--rgw-data-log-window',
+        type=check_positive_int,
+        default=30,
+        help='period until a data log entry is valid - '
+        'must match radosgw configuration',
         )
     parser.add_argument(
         '--test-server-host',
@@ -169,52 +174,43 @@ class TestHandler(BaseHTTPRequestHandler):
     num_workers = None
     lock_timeout = None
     max_entries = None
+    data_log_window = 30
     src = None
     dest = None
-    daemon_id = None
 
     def do_POST(self):
         log = logging.getLogger(__name__)
         status = 200
         resp = ''
+        sync_cls = None
         if self.path.startswith('/metadata/full'):
-            try:
-		sync.MetaSyncerFull('metadata', src, dest, args.daemon_id).sync(TestHandler.num_workers,
-                                                                                TestHandler.lock_timeout)
-            except Exception as e:
-                log.exception('error doing full metadata sync')
-                status = 500
-                resp = str(e)
+            sync_cls = sync.MetaSyncerFull
         elif self.path.startswith('/metadata/incremental'):
-            try:
-		sync.MetaSyncerInc('metadata', src, dest, args.daemon_id).sync(TestHandler.num_workers,
-                                                                               TestHandler.lock_timeout,
-                                                                               TestHandler.max_entries)
-            except Exception as e:
-                log.exception('error doing incremental metadata sync')
-                status = 500
-                resp = str(e)
+            sync_cls = sync.MetaSyncerInc
         elif self.path.startswith('/data/full'):
-            try:
-		sync.DataSyncerFull('data', src, dest, args.daemon_id).sync(TestHandler.num_workers,
-                                                                            TestHandler.lock_timeout)
-            except Exception as e:
-                log.exception('error doing full data sync')
-                status = 500
-                resp = str(e)
+            sync_cls = sync.DataSyncerFull
         elif self.path.startswith('/data/incremental'):
-            try:
-		sync.DataSyncerInc('data', src, dest, args.daemon_id).sync(TestHandler.num_workers,
-                                                                           TestHandler.lock_timeout,
-                                                                           TestHandler.max_entries)
-            except Exception as e:
-                log.exception('error doing incremental data sync')
-                status = 500
-                resp = str(e)
+            sync_cls = sync.DataSyncerInc
         else:
             log.warn('invalid request, ignoring')
             status = 400
             resp = 'bad path'
+
+        try:
+            if sync_cls is not None:
+                syncer = sync_cls(TestHandler.src, TestHandler.dest,
+                                  TestHandler.max_entries,
+                                  data_log_window=TestHandler.data_log_window,
+                                  object_timeout=TestHandler.object_timeout)
+                syncer.prepare()
+                syncer.sync(
+                    TestHandler.num_workers,
+                    TestHandler.lock_timeout,
+                    )
+        except Exception as e:
+            log.exception('error during sync')
+            status = 500
+            resp = str(e)
 
         self.log_request(status, len(resp))
         if status >= 400:
@@ -247,48 +243,82 @@ def main():
         handler.setFormatter(formatter)
         logging.getLogger().addHandler(handler)
 
-    src = client.Endpoint(args.src_host, args.src_port, args.src_access_key,
-                          args.src_secret_key, args.src_zone)
-    dest = client.Endpoint(args.dest_host, args.dest_port, args.dest_access_key,
-                           args.dest_secret_key, args.dest_zone)
+    dest = args.destination
+    dest.access_key = args.dest_access_key
+    dest.secret_key = args.dest_secret_key
+    src = args.source or client.Endpoint(None, None, None)
+    if args.src_zone:
+        src.zone = args.src_zone
+    dest_conn = client.connection(dest)
+
+    try:
+        region_map = client.get_region_map(dest_conn)
+    except Exception as e:
+        log.error('Could not retrieve region map from destination: %s', e)
+        sys.exit(1)
+
+    try:
+        client.configure_endpoints(region_map, dest, src, args.metadata_only)
+    except client.ClientException as e:
+        log.error(e)
+        sys.exit(1)
+
+    src.access_key = args.src_access_key
+    src.secret_key = args.src_secret_key
 
     if args.test_server_host:
         log.warn('TEST MODE - do not run unless you are testing this program')
-	TestHandler.src = src
-	TestHandler.dest = dest
-	TestHandler.daemon_id = args.daemon_id
+        TestHandler.src = src
+        TestHandler.dest = dest
         TestHandler.num_workers = args.num_workers
         TestHandler.lock_timeout = args.lock_timeout
         TestHandler.max_entries = args.max_entries
+        TestHandler.data_log_window = args.data_log_window
+        TestHandler.object_sync_timeout = args.object_sync_timeout
         server = HTTPServer((args.test_server_host, args.test_server_port),
                             TestHandler)
         server.serve_forever()
-	sys.exit()
-
-    if args.data:
-        # TODO: check src and dest zone names and endpoints match the region map
-        if args.sync_scope == 'full':
-            syncer = sync.DataSyncerFull('data', src, dest, args.daemon_id)
-        else:
-            syncer = sync.DataSyncerInc('data', src, dest, args.daemon_id)
-        log.info('syncing data')
-    else:
-        # TODO: check src and dest zone names and endpoints match the region map
-        if args.sync_scope == 'full':
-            syncer = sync.MetaSyncerFull('metadata', src, dest, args.daemon_id)
-        else:
-            syncer = sync.MetaSyncerInc('metadata', src, dest, args.daemon_id)
-        log.info('syncing metadata')
+        sys.exit()
 
     if args.sync_scope == 'full':
-        syncer.sync(args.num_workers, args.lock_timeout)
+        meta_cls = sync.MetaSyncerFull
+        data_cls = sync.DataSyncerFull
+    else:
+        meta_cls = sync.MetaSyncerInc
+        data_cls = sync.DataSyncerInc
+
+    meta_syncer = meta_cls(src, dest, args.max_entries)
+    data_syncer = data_cls(src, dest, args.max_entries,
+                           data_log_window=args.rgw_data_log_window,
+                           object_timeout=args.object_sync_timeout)
+
+    # fetch logs first since data logs need to wait before becoming usable
+    # due to rgw's window of data log updates during which the bucket index
+    # log may still be updated without the data log getting a new entry for
+    # the bucket
+    meta_syncer.prepare()
+    if not args.metadata_only:
+        data_syncer.prepare()
+
+    if args.sync_scope == 'full':
+        log.info('syncing all metadata')
+        meta_syncer.sync(args.num_workers, args.lock_timeout)
+        if not args.metadata_only:
+            log.info('syncing all data')
+            data_syncer.sync(args.num_workers, args.lock_timeout)
+        log.info('Finished full sync. Check logs to see any issues that '
+                 'incremental sync will retry.')
     else:
         while True:
             try:
-                syncer.sync(args.num_workers, args.lock_timeout,
-                            args.max_entries)
-            except:
-                log.exception('error doing incremental sync, trying again later')
+                meta_syncer.sync(args.num_workers, args.lock_timeout)
+                if not args.metadata_only:
+                    data_syncer.sync(args.num_workers, args.lock_timeout)
+            except Exception as e:
+                log.warn('error doing incremental sync, will try again: %s', e)
+            # prepare data before sleeping due to rgw_log_bucket_window
+            data_syncer.prepare()
             log.debug('waiting %d seconds until next sync',
                       args.incremental_sync_delay)
             time.sleep(args.incremental_sync_delay)
+            meta_syncer.prepare()
