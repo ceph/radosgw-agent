@@ -201,7 +201,7 @@ class TestHandler(BaseHTTPRequestHandler):
                 syncer = sync_cls(TestHandler.src, TestHandler.dest,
                                   TestHandler.max_entries,
                                   rgw_data_log_window=TestHandler.rgw_data_log_window,
-                                  object_timeout=TestHandler.object_timeout)
+                                  object_sync_timeout=TestHandler.object_sync_timeout)
                 syncer.prepare()
                 syncer.sync(
                     TestHandler.num_workers,
@@ -290,7 +290,7 @@ def main():
     meta_syncer = meta_cls(src, dest, args.max_entries)
     data_syncer = data_cls(src, dest, args.max_entries,
                            rgw_data_log_window=args.rgw_data_log_window,
-                           object_timeout=args.object_sync_timeout)
+                           object_sync_timeout=args.object_sync_timeout)
 
     # fetch logs first since data logs need to wait before becoming usable
     # due to rgw's window of data log updates during which the bucket index

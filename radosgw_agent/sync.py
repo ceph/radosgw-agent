@@ -23,7 +23,7 @@ class Syncer(object):
         self.worker_cls = None # filled in by subclass constructor
         self.num_shards = None
         self.max_entries = max_entries
-        self.object_timeout = kwargs.get('object_timeout')
+        self.object_sync_timeout = kwargs.get('object_sync_timeout')
 
     def init_num_shards(self):
         if self.num_shards is not None:
@@ -86,7 +86,7 @@ class Syncer(object):
                                      self.dest,
                                      daemon_id=self.daemon_id,
                                      max_entries=max_entries,
-                                     object_timeout=self.object_timeout,
+                                     object_sync_timeout=self.object_sync_timeout,
                                      )
                      for i in xrange(num_workers)]
         for process in processes:
