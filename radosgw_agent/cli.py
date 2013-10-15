@@ -81,7 +81,7 @@ def parse_args():
     parser.add_argument(
         'destination',
         type=check_endpoint,
-        nargs=1 if 'destination' not in defaults else '?',
+        nargs=None if 'destination' not in defaults else '?',
         help='radosgw endpoint to which to sync '
         '(e.g. http://zone2.example.org:8080)',
         )
