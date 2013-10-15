@@ -174,7 +174,7 @@ class TestHandler(BaseHTTPRequestHandler):
     num_workers = None
     lock_timeout = None
     max_entries = None
-    data_log_window = 30
+    rgw_data_log_window = 30
     src = None
     dest = None
 
@@ -200,7 +200,7 @@ class TestHandler(BaseHTTPRequestHandler):
             if sync_cls is not None:
                 syncer = sync_cls(TestHandler.src, TestHandler.dest,
                                   TestHandler.max_entries,
-                                  data_log_window=TestHandler.data_log_window,
+                                  rgw_data_log_window=TestHandler.rgw_data_log_window,
                                   object_timeout=TestHandler.object_timeout)
                 syncer.prepare()
                 syncer.sync(
@@ -273,7 +273,7 @@ def main():
         TestHandler.num_workers = args.num_workers
         TestHandler.lock_timeout = args.lock_timeout
         TestHandler.max_entries = args.max_entries
-        TestHandler.data_log_window = args.data_log_window
+        TestHandler.rgw_data_log_window = args.rgw_data_log_window
         TestHandler.object_sync_timeout = args.object_sync_timeout
         server = HTTPServer((args.test_server_host, args.test_server_port),
                             TestHandler)
@@ -289,7 +289,7 @@ def main():
 
     meta_syncer = meta_cls(src, dest, args.max_entries)
     data_syncer = data_cls(src, dest, args.max_entries,
-                           data_log_window=args.rgw_data_log_window,
+                           rgw_data_log_window=args.rgw_data_log_window,
                            object_timeout=args.object_sync_timeout)
 
     # fetch logs first since data logs need to wait before becoming usable

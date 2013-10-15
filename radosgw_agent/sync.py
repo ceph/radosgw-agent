@@ -185,11 +185,11 @@ class DataSyncerInc(IncrementalSyncer):
         super(DataSyncerInc, self).__init__(*args, **kwargs)
         self.worker_cls = worker.DataWorkerIncremental
         self.type = 'data'
-        self.data_log_window = kwargs.get('data_log_window', 30)
+        self.rgw_data_log_window = kwargs.get('rgw_data_log_window', 30)
 
     def wait_until_ready(self):
         log.info('waiting to make sure bucket log is consistent')
-        while time.time() < self.prepared_at + self.data_log_window:
+        while time.time() < self.prepared_at + self.rgw_data_log_window:
             time.sleep(1)
 
 
@@ -199,7 +199,7 @@ class DataSyncerFull(Syncer):
         super(DataSyncerFull, self).__init__(*args, **kwargs)
         self.worker_cls = worker.DataWorkerFull
         self.type = 'data'
-        self.data_log_window = kwargs.get('data_log_window', 30)
+        self.rgw_data_log_window = kwargs.get('rgw_data_log_window', 30)
 
     def prepare(self):
         self.init_num_shards()
@@ -229,7 +229,7 @@ class DataSyncerFull(Syncer):
 
     def wait_until_ready(self):
         log.info('waiting to make sure bucket log is consistent')
-        while time.time() < self.prepared_at + self.data_log_window:
+        while time.time() < self.prepared_at + self.rgw_data_log_window:
             time.sleep(1)
 
 
