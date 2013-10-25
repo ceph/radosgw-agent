@@ -222,7 +222,7 @@ def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
                        'rgwx-op-id': op_id,
                        },
                    headers={
-                       'x-amz-copy-source': path,
+                       'x-amz-copy-source': '%s/%s' % (bucket_name, object_name),
                        },
                    expect_json=False)
 
