@@ -198,7 +198,7 @@ class DataWorker(Worker):
         except Exception as e:
             log.debug('exception during sync: %s', e)
             if found:
-                self.wait_for_object(bucket, obj, until)
+                self.wait_for_object(bucket, obj, until, local_op_id)
         # TODO: clean up old op states
         try:
             client.remove_op_state(self.dest_conn, self.daemon_id, local_op_id,
@@ -207,12 +207,12 @@ class DataWorker(Worker):
             log.exception('could not remove op state for daemon "%s" op_id %s',
                           self.daemon_id, local_op_id)
 
-    def wait_for_object(self, bucket, obj, until):
+    def wait_for_object(self, bucket, obj, until, local_op_id):
         while time.time() < until:
             try:
                 state = client.get_op_state(self.dest_conn,
                                             self.daemon_id,
-                                            self.op_id,
+                                            local_op_id,
                                             bucket, obj)
                 log.debug('op state is %s', state)
                 state = state[0]['state']
