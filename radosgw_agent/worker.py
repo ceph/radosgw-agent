@@ -170,15 +170,18 @@ class DataWorker(Worker):
         self.daemon_id = kwargs['daemon_id']
 
     def sync_object(self, bucket, obj):
+        log.debug('sync_object %s/%s', bucket, obj)
         self.op_id += 1
         local_op_id = self.local_lock_id + ':' +  str(self.op_id)
         try:
+            found = True
             until = time.time() + self.object_sync_timeout
             client.sync_object_intra_region(self.dest_conn, bucket, obj,
                                             self.src.zone.name,
                                             self.daemon_id,
                                             local_op_id)
         except client.NotFound:
+            found = False
             log.debug('"%s/%s" not found on master, deleting from secondary',
                       bucket, obj)
             try:
@@ -194,7 +197,8 @@ class DataWorker(Worker):
             raise
         except Exception as e:
             log.debug('exception during sync: %s', e)
-            self.wait_for_object(bucket, obj, until)
+            if found:
+                self.wait_for_object(bucket, obj, until)
         # TODO: clean up old op states
         try:
             client.remove_op_state(self.dest_conn, self.daemon_id, local_op_id,
