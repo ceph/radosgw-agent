@@ -13,6 +13,45 @@ log = logging.getLogger(__name__)
 # radosgw-agent, so just use a constant value for the daemon id.
 DAEMON_ID = 'radosgw-agent'
 
+def prepare_sync(syncer, error_delay):
+    """Attempt to prepare a syncer for running a sync.
+
+    :param error_delay: seconds to wait before retrying
+
+    This will retry forever so the sync agent continues if radosgws
+    are unavailable temporarily.
+    """
+    while True:
+        try:
+            syncer.prepare()
+            break
+        except Exception as e:
+            log.warn('error preparing for sync, will retry: %s', e)
+            time.sleep(error_delay)
+
+def incremental_sync(meta_syncer, data_syncer, num_workers, lock_timeout,
+                     incremental_sync_delay, metadata_only, error_delay):
+    """Run a continuous incremental sync.
+
+    This will run forever, pausing between syncs by a
+    incremental_sync_delay seconds.
+    """
+    while True:
+        try:
+            meta_syncer.sync(num_workers, lock_timeout)
+            if not metadata_only:
+                data_syncer.sync(num_workers, lock_timeout)
+        except Exception as e:
+            log.warn('error doing incremental sync, will try again: %s', e)
+
+        # prepare data before sleeping due to rgw_log_bucket_window
+        if not metadata_only:
+            prepare_sync(data_syncer, error_delay)
+        log.info('waiting %d seconds until next sync',
+                 incremental_sync_delay)
+        time.sleep(incremental_sync_delay)
+        prepare_sync(meta_syncer, error_delay)
+
 class Syncer(object):
     def __init__(self, src, dest, max_entries, *args, **kwargs):
         self.src = src

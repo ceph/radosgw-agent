@@ -2,7 +2,6 @@ from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 import argparse
 import contextlib
 import logging
-import time
 import yaml
 import sys
 
@@ -144,6 +143,13 @@ def parse_args():
         default=60 * 60 * 60,
         help='seconds to wait for an individual object to sync before '
         'assuming failure',
+        )
+    parser.add_argument(
+        '--prepare-error-delay',
+        type=check_positive_int,
+        default=10,
+        help='seconds to wait before retrying when preparing '
+        'an incremental sync fails',
         )
     parser.add_argument(
         '--rgw-data-log-window',
@@ -296,9 +302,9 @@ def main():
     # due to rgw's window of data log updates during which the bucket index
     # log may still be updated without the data log getting a new entry for
     # the bucket
-    meta_syncer.prepare()
+    sync.prepare_sync(meta_syncer, args.prepare_error_delay)
     if not args.metadata_only:
-        data_syncer.prepare()
+        sync.prepare_sync(data_syncer, args.prepare_error_delay)
 
     if args.sync_scope == 'full':
         log.info('syncing all metadata')
@@ -309,16 +315,9 @@ def main():
         log.info('Finished full sync. Check logs to see any issues that '
                  'incremental sync will retry.')
     else:
-        while True:
-            try:
-                meta_syncer.sync(args.num_workers, args.lock_timeout)
-                if not args.metadata_only:
-                    data_syncer.sync(args.num_workers, args.lock_timeout)
-            except Exception as e:
-                log.warn('error doing incremental sync, will try again: %s', e)
-            # prepare data before sleeping due to rgw_log_bucket_window
-            data_syncer.prepare()
-            log.debug('waiting %d seconds until next sync',
-                      args.incremental_sync_delay)
-            time.sleep(args.incremental_sync_delay)
-            meta_syncer.prepare()
+        sync.incremental_sync(meta_syncer, data_syncer,
+                              args.num_workers,
+                              args.lock_timeout,
+                              args.incremental_sync_delay,
+                              args.metadata_only,
+                              args.prepare_error_delay)
