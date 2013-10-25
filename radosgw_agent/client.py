@@ -116,8 +116,10 @@ def check_result_status(result):
                               HttpError)(result.status_code, result.content)
 def url_safe(component):
     if isinstance(component, basestring):
-        return urllib.quote(component.encode('utf8'))
-    return str(component)
+        string = component.encode('utf8')
+    else:
+        string = str(component)
+    return urllib.quote(string)
 
 def request(connection, type_, resource, params=None, headers=None,
             data=None, expect_json=True, special_first_param=None):
