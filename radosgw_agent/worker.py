@@ -333,8 +333,11 @@ class DataWorkerFull(DataWorker):
     def full_sync_bucket(self, bucket):
         try:
             instance = self.get_bucket_instance(bucket)
-            marker = client.get_log_info(self.src_conn, 'bucket-index',
-                                         instance)['max_marker']
+            try:
+                marker = client.get_log_info(self.src_conn, 'bucket-index',
+                                             instance)['max_marker']
+            except client.NotFound:
+                marker = ''
             log.debug('bucket instance is "%s" with marker %s', instance, marker)
             # nothing to do for this bucket
             if not marker:
