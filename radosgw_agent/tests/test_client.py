@@ -25,39 +25,39 @@ REGION_MAP = {
                         }
                     ],
                 "name": "skinny",
-                "default_placement": "",  
+                "default_placement": "",
                 "master_zone": "skinny-1",
                 "api_name": "slim",
-                "placement_targets": [],  
+                "placement_targets": [],
                 "is_master": "true",
                 "endpoints": [
                     "http://skinny:80/"
-                    ]   
-                },  
+                    ]
+                },
             "key": "skinny"
-            },  
+            },
         {
             "val": {
                 "zones": [
                     {
                         "endpoints": [
-                            "http://vit:8003/" 
+                            "http://vit:8003/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "swab-2"
                         },
                     {
                         "endpoints": [
-                            "http://vit:8004/" 
+                            "http://vit:8004/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "swab-3"
                         },
                     {
                         "endpoints": [
-                            "http://vit:8000/" 
+                            "http://vit:8000/"
                             ],
                         "log_data": "true",
                         "log_meta": "true",
@@ -81,18 +81,18 @@ REGION_MAP = {
                 "zones": [
                     {
                         "endpoints": [
-                            "http://ro:80/" 
+                            "http://ro:80/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "ro-1"
                         },
                     {
                         "endpoints": [
-                            "http://ro:8080/" 
+                            "http://ro:8080/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "ro-2"
                         },
                     ],
@@ -114,18 +114,18 @@ REGION_MAP = {
                 "zones": [
                     {
                         "endpoints": [
-                            "http://meta:80/" 
+                            "http://meta:80/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "true",   
+                        "log_data": "false",
+                        "log_meta": "true",
                         "name": "meta-1"
                         },
                     {
                         "endpoints": [
-                            "http://meta:8080/" 
+                            "http://meta:8080/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "meta-2"
                         },
                     ],
