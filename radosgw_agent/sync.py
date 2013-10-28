@@ -79,8 +79,8 @@ class Syncer(object):
         hash_val = 0
         for char in key:
             c = ord(char)
-            hash_val = (hash_val + (c << 4) + (c >> 4)) * 11;
-        return hash_val % self.num_shards;
+            hash_val = (hash_val + (c << 4) + (c >> 4)) * 11
+        return hash_val % self.num_shards
 
     def prepare(self):
         """Setup any state required before syncing starts.

@@ -25,39 +25,39 @@ REGION_MAP = {
                         }
                     ],
                 "name": "skinny",
-                "default_placement": "",  
+                "default_placement": "",
                 "master_zone": "skinny-1",
                 "api_name": "slim",
-                "placement_targets": [],  
+                "placement_targets": [],
                 "is_master": "true",
                 "endpoints": [
                     "http://skinny:80/"
-                    ]   
-                },  
+                    ]
+                },
             "key": "skinny"
-            },  
+            },
         {
             "val": {
                 "zones": [
                     {
                         "endpoints": [
-                            "http://vit:8003/" 
+                            "http://vit:8003/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "swab-2"
                         },
                     {
                         "endpoints": [
-                            "http://vit:8004/" 
+                            "http://vit:8004/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "swab-3"
                         },
                     {
                         "endpoints": [
-                            "http://vit:8000/" 
+                            "http://vit:8000/"
                             ],
                         "log_data": "true",
                         "log_meta": "true",
@@ -81,18 +81,18 @@ REGION_MAP = {
                 "zones": [
                     {
                         "endpoints": [
-                            "http://ro:80/" 
+                            "http://ro:80/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "ro-1"
                         },
                     {
                         "endpoints": [
-                            "http://ro:8080/" 
+                            "http://ro:8080/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "ro-2"
                         },
                     ],
@@ -114,18 +114,18 @@ REGION_MAP = {
                 "zones": [
                     {
                         "endpoints": [
-                            "http://meta:80/" 
+                            "http://meta:80/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "true",   
+                        "log_data": "false",
+                        "log_meta": "true",
                         "name": "meta-1"
                         },
                     {
                         "endpoints": [
-                            "http://meta:8080/" 
+                            "http://meta:8080/"
                             ],
-                        "log_data": "false",   
-                        "log_meta": "false",   
+                        "log_data": "false",
+                        "log_meta": "false",
                         "name": "meta-2"
                         },
                     ],
@@ -254,7 +254,7 @@ def test_configure_endpoints_2nd_region_metaonly_data():
                                   meta_only=False)
 
 def test_configure_endpoints_master_region_master_zone():
-     with py.test.raises(client.InvalidZone):
+    with py.test.raises(client.InvalidZone):
         _test_configure_endpoints('http://vit:8001', 'skinny', 'skinny-1',
                                   'http://vit:8001', 'skinny', 'skinny-1')
 
@@ -275,19 +275,19 @@ def test_configure_endpoints_specified_src_master_region_data():
                                   'http://vit:8001', meta_only=False)
 
 def test_configure_endpoints_bad_src_same_region():
-     with py.test.raises(client.InvalidZone):
+    with py.test.raises(client.InvalidZone):
         _test_configure_endpoints('http://vit:8003', 'swab', 'swab-2',
                                   'http://vit:8004', 'swab', 'swab-3',
                                   'http://vit:8004')
 
 def test_configure_endpoints_bad_src_master_region():
-     with py.test.raises(client.InvalidZone):
+    with py.test.raises(client.InvalidZone):
         _test_configure_endpoints('http://vit:8003', 'swab', 'swab-2',
                                   'http://vit:8002', 'skinny', 'skinny-2',
                                   'http://vit:8002')
 
 def test_configure_endpoints_bad_src_same_zone():
-     with py.test.raises(client.InvalidZone):
+    with py.test.raises(client.InvalidZone):
         _test_configure_endpoints('http://vit:8000', 'swab', 'swab-1',
                                   'http://vit:8000', 'swab', 'swab-1',
                                   'http://vit:8000')
@@ -299,6 +299,6 @@ def test_configure_endpoints_specified_nonexistent_src():
                                   'http://vit:80')
 
 def test_configure_endpoints_unknown_zone():
-     with py.test.raises(client.ZoneNotFound):
+    with py.test.raises(client.ZoneNotFound):
         _test_configure_endpoints('http://vit:8005', 'skinny', 'skinny-1',
                                   'http://vit:8001', 'skinny', 'skinny-1')
