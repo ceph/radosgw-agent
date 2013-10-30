@@ -22,8 +22,8 @@ setup(
 
     install_requires=[
         'setuptools',
-        'boto>=2.2.2,<3.0',
-        'requests',
+        'boto >=2.2.2,<3.0.0',
+        'requests >=1.2.1',
         ] + install_requires,
 
     test_requires=[

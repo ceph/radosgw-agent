@@ -1,4 +1,4 @@
 argparse
 boto >=2.2.2,<3.0.0
-requests
+requests >=1.2.1
 PyYAML
