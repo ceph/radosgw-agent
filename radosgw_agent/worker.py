@@ -201,8 +201,9 @@ class DataWorker(Worker):
                 self.wait_for_object(bucket, obj, until, local_op_id)
         # TODO: clean up old op states
         try:
-            client.remove_op_state(self.dest_conn, self.daemon_id, local_op_id,
-                                   bucket, obj)
+            if found:
+                client.remove_op_state(self.dest_conn, self.daemon_id,
+                                       local_op_id, bucket, obj)
         except Exception:
             log.exception('could not remove op state for daemon "%s" op_id %s',
                           self.daemon_id, local_op_id)
