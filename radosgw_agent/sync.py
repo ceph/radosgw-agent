@@ -25,8 +25,9 @@ def prepare_sync(syncer, error_delay):
         try:
             syncer.prepare()
             break
-        except Exception as e:
-            log.warn('error preparing for sync, will retry: %s', e)
+        except Exception:
+            log.warn('error preparing for sync, will retry. Traceback:',
+                     exc_info=True)
             time.sleep(error_delay)
 
 def incremental_sync(meta_syncer, data_syncer, num_workers, lock_timeout,
@@ -41,8 +42,9 @@ def incremental_sync(meta_syncer, data_syncer, num_workers, lock_timeout,
             meta_syncer.sync(num_workers, lock_timeout)
             if not metadata_only:
                 data_syncer.sync(num_workers, lock_timeout)
-        except Exception as e:
-            log.warn('error doing incremental sync, will try again: %s', e)
+        except Exception:
+            log.warn('error doing incremental sync, will try again. Traceback:',
+                     exc_info=True)
 
         # prepare data before sleeping due to rgw_log_bucket_window
         if not metadata_only:
@@ -70,8 +72,8 @@ class Syncer(object):
         try:
             self.num_shards = client.num_log_shards(self.src_conn, self.type)
             log.debug('%d shards to check', self.num_shards)
-        except Exception as e:
-            log.error('finding number of shards failed: %s', e)
+        except Exception:
+            log.error('finding number of shards failed')
             raise
 
     def shard_num_for_key(self, key):
@@ -111,8 +113,9 @@ class Syncer(object):
                                     self.daemon_id,
                                     shard_num,
                                     data)
-        except Exception as e:
-            log.warn('could not set worker bounds, may repeat some work: %s', e)
+        except Exception:
+            log.warn('could not set worker bounds, may repeat some work.'
+                     'Traceback:', exc_info=True)
 
     def sync(self, num_workers, log_lock_time, max_entries=None):
         workQueue = multiprocessing.Queue()

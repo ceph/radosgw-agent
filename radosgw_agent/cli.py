@@ -260,8 +260,8 @@ def main():
 
     try:
         region_map = client.get_region_map(dest_conn)
-    except Exception as e:
-        log.error('Could not retrieve region map from destination: %s', e)
+    except Exception:
+        log.exception('Could not retrieve region map from destination')
         sys.exit(1)
 
     try:

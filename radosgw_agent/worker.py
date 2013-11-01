@@ -61,10 +61,10 @@ class Worker(multiprocessing.Process):
             self.lock.unset_shard()
             self.result_queue.put((RESULT_SUCCESS, result))
             raise SkipShard('no log for shard')
-        except Exception as e:
+        except Exception:
             log.warn('error locking shard %d log, '
-                     ' skipping for now: %s',
-                     shard_num, e)
+                     ' skipping for now. Traceback: ',
+                     shard_num, exc_info=True)
             self.lock.unset_shard()
             self.result_queue.put((RESULT_ERROR, result))
             raise SkipShard()
@@ -76,7 +76,7 @@ class Worker(multiprocessing.Process):
             log.warn('work may be duplicated: %s', e)
         except Exception as e:
             log.warn('error unlocking log, continuing anyway '
-                     'since lock will timeout')
+                     'since lock will timeout. Traceback:', exc_info=True)
 
     def set_bound(self, key, marker, retries, type_=None):
         # api doesn't allow setting a bound with a blank marker
@@ -93,9 +93,10 @@ class Worker(multiprocessing.Process):
                                         key,
                                         data=data)
                 return RESULT_SUCCESS
-            except Exception as e:
+            except Exception:
                 log.warn('error setting worker bound for key "%s",'
-                         ' may duplicate some work later: %s', key, e)
+                         ' may duplicate some work later. Traceback:', key,
+                         exc_info=True)
                 return RESULT_ERROR
 
 MetadataEntry = namedtuple('MetadataEntry',
@@ -225,7 +226,7 @@ class DataWorker(Worker):
             except SyncFailed:
                 raise
             except Exception as e:
-                log.debug('error geting op state: %s', e)
+                log.debug('error geting op state: %s', e, exc_info=True)
                 time.sleep(1)
         # timeout expired
         raise SyncTimedOut()
@@ -322,7 +323,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
                                                             retries)
             except Exception as e:
                 log.warn('error syncing bucket instance "%s": %s',
-                         bucket_instance, e)
+                         bucket_instance, e, exc_info=True)
                 sync_result = RESULT_ERROR
             if sync_result == RESULT_ERROR:
                 new_retries.append(bucket_instance)
@@ -406,16 +407,16 @@ class MetadataWorker(Worker):
                 # Since this error is handled appropriately, return success
                 return RESULT_SUCCESS
         except Exception as e:
-            log.error('error getting metadata for %s "%s": %s',
-                      section, name, e)
+            log.warn('error getting metadata for %s "%s": %s',
+                     section, name, e, exc_info=True)
             return RESULT_ERROR
         else:
             try:
                 client.update_metadata(self.dest_conn, section, name, metadata)
                 return RESULT_SUCCESS
             except Exception as e:
-                log.error('error updating metadata for %s "%s": %s',
-                          section, name, e)
+                log.warn('error updating metadata for %s "%s": %s',
+                          section, name, e, exc_info=True)
                 return RESULT_ERROR
 
 class MetadataWorkerIncremental(IncrementalMixin, MetadataWorker):
@@ -471,7 +472,7 @@ class MetadataWorkerFull(MetadataWorker):
                     self.sync_meta(section, name)
                 except Exception as e:
                     log.warn('could not sync %s "%s", saving for retry: %s',
-                             section, name, e)
+                             section, name, e, exc_info=True)
                     retries.append(section + '/' + name)
 
             # unlock shard and report buckets to retry during incremental sync
