@@ -1,3 +1,9 @@
+radosgw-agent (1.1-1) precise; urgency=low
+
+  * new upstream release 
+
+ -- Gary Lowell <glowell@pudgy.ops.newdream.net>  Thu, 21 Nov 2013 16:17:25 -0800
+
 radosgw-agent (1.0-1) stable; urgency=low
 
   * Initial release 
