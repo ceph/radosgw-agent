@@ -240,7 +240,7 @@ def main():
     logging.getLogger('requests').setLevel(lib_log_level)
 
     if args.log_file is not None:
-        handler = logging.FileHandler(
+        handler = logging.handlers.WatchedFileHandler(
             filename=args.log_file,
             )
         formatter = logging.Formatter(
