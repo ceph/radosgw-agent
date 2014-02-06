@@ -117,7 +117,7 @@ class Syncer(object):
             log.warn('could not set worker bounds, may repeat some work.'
                      'Traceback:', exc_info=True)
 
-    def sync(self, num_workers, log_lock_time, max_entries=None):
+    def sync(self, num_workers, log_lock_time):
         workQueue = multiprocessing.Queue()
         resultQueue = multiprocessing.Queue()
 
@@ -127,7 +127,7 @@ class Syncer(object):
                                      self.src,
                                      self.dest,
                                      daemon_id=self.daemon_id,
-                                     max_entries=max_entries,
+                                     max_entries=self.max_entries,
                                      object_sync_timeout=self.object_sync_timeout,
                                      )
                      for i in xrange(num_workers)]
