@@ -268,26 +268,35 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
         super(DataWorkerIncremental, self).__init__(*args, **kwargs)
         self.max_entries = kwargs['max_entries']
 
+    def get_bucket_instance_entries(self, marker, instance):
+        entries = []
+        while True:
+            try:
+                log_entries = client.get_log(self.src_conn, 'bucket-index',
+                                             marker, self.max_entries, instance)
+            except client.NotFound:
+                log_entries = []
+
+            log.debug('bucket instance "%s" has %d entries after "%s"', instance,
+                      len(log_entries), marker)
+
+            try:
+                entries += [_bi_entry_from_json(entry) for entry in log_entries]
+            except KeyError:
+                log.error('log missing key is: %s', log_entries)
+                raise
+
+            if entries:
+                marker = entries[-1].marker
+            else:
+                marker = ''
+
+            if len(log_entries) < self.max_entries:
+                break
+        return marker, entries
+
     def inc_sync_bucket_instance(self, instance, marker, timestamp, retries):
-        try:
-            log_entries = client.get_log(self.src_conn, 'bucket-index',
-                                         marker, self.max_entries, instance)
-        except client.NotFound:
-            log_entries = []
-
-        log.info('bucket instance "%s" has %d entries after "%s"', instance,
-                 len(log_entries), marker)
-
-        try:
-            entries = [_bi_entry_from_json(entry) for entry in log_entries]
-        except KeyError:
-            log.error('log missing key is: %s', log_entries)
-            raise
-
-        if entries:
-            max_marker, timestamp = entries[-1].marker, entries[-1].timestamp
-        else:
-            max_marker, timestamp = '', DEFAULT_TIME
+        max_marker, entries = self.get_bucket_instance_entries(marker, instance)
         objects = set([entry.object for entry in entries])
         bucket = self.get_bucket(instance)
         new_retries = self.sync_bucket(bucket, objects.union(retries))
