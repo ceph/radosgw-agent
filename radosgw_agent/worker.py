@@ -442,7 +442,7 @@ class MetadataWorkerIncremental(IncrementalMixin, MetadataWorker):
 
         new_retries = []
         mentioned = set([(entry.section, entry.name) for entry in entries])
-        split_retries = [entry.split('/', 1) for entry in retries]
+        split_retries = [tuple(entry.split('/', 1)) for entry in retries]
         for section, name in mentioned.union(split_retries):
             sync_result = self.sync_meta(section, name)
             if sync_result == RESULT_ERROR:
