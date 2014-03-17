@@ -191,7 +191,7 @@ class IncrementalSyncer(Syncer):
             log_entries = result['entries']
             if len(log_entries) == self.max_entries:
                 log.warn('shard %d log has fallen behind - log length >= %d',
-                         shard_num)
+                         shard_num, self.max_entries)
         except client.NotFound:
             # no entries past this marker yet, but we my have retries
             last_marker = ''
