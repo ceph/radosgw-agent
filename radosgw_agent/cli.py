@@ -3,6 +3,7 @@ import argparse
 import contextlib
 import logging
 import logging.handlers
+import os.path
 import yaml
 import sys
 
@@ -32,9 +33,14 @@ def parse_args():
         help='configuration file'
         )
     args, remaining = conf_parser.parse_known_args()
+    log_dir = '/var/log/ceph/radosgw-agent/'
+    log_file = 'radosgw-agent.log'
+    if args.conf is not None:
+        log_file = os.path.basename(args.conf.name)
     defaults = dict(
         sync_scope='incremental',
         log_lock_time=20,
+        log_file=os.path.join(log_dir, log_file),
         )
     if args.conf is not None:
         with contextlib.closing(args.conf):
