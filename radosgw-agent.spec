@@ -15,7 +15,10 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 Prefix: %{_prefix}
 BuildArch: noarch
 Vendor: Josh Durgin <josh.durgin@inktank.com>
-Requires: python-argparse PyYAML python-boto >= 2.2.2 python-boto < 3.0.0 python-requests
+Requires: python-argparse
+Requires: PyYAML
+Requires: python-boto >= 2.2.2
+Requires: python-boto < 3.0.0
 Url: https://github.com/ceph/radosgw-agent
 
 %description
