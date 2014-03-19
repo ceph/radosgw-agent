@@ -34,6 +34,7 @@ install -D init-radosgw-agent $RPM_BUILD_ROOT%{_initrddir}/radosgw-agent
 
 %install
 python setup.py install --single-version-externally-managed -O1 --root=$RPM_BUILD_ROOT --record=INSTALLED_FILES
+install -m 0644 -D logrotate.conf $RPM_BUILD_ROOT%{_sysconfdir}/logrotate.d/radosgw-agent
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -43,3 +44,4 @@ rm -rf $RPM_BUILD_ROOT
 %dir %{_sysconfdir}/ceph/radosgw-agent/
 %dir %{_localstatedir}/log/ceph/radosgw-agent/
 %dir %{_localstatedir}/run/ceph/radosgw-agent/
+%config(noreplace) %{_sysconfdir}/logrotate.d/radosgw-agent
