@@ -13,6 +13,7 @@ Architecture: all
 Depends: python,
          python-argparse,
          python-setuptools,
+         python-requests,
          ${misc:Depends},
          ${python:Depends}
 Description:  Rados gateway agents.
