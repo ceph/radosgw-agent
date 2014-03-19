@@ -30,6 +30,7 @@ UNKNOWN
 
 %build
 python setup.py build
+install -D init-radosgw-agent $RPM_BUILD_ROOT%{_initrddir}/radosgw-agent
 
 %install
 python setup.py install --single-version-externally-managed -O1 --root=$RPM_BUILD_ROOT --record=INSTALLED_FILES
@@ -39,3 +40,6 @@ rm -rf $RPM_BUILD_ROOT
 
 %files -f INSTALLED_FILES
 %defattr(-,root,root)
+%dir %{_sysconfdir}/ceph/radosgw-agent/
+%dir %{_localstatedir}/log/ceph/radosgw-agent/
+%dir %{_localstatedir}/run/ceph/radosgw-agent/

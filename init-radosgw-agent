@@ -1,0 +1,102 @@
+#!/bin/sh
+# Start/stop radosgw-agent daemons
+# chkconfig: 2345 60 80
+
+### BEGIN INIT INFO
+# Provides:          radosgw-agent
+# Required-Start:    $remote_fs $named $network
+# Required-Stop:     $remote_fs $named $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start radosgw-agent at boot time
+# Description:       Enable radosgw-agent services
+### END INIT INFO
+
+dir="/"
+config_path="/etc/ceph/radosgw-agent/default.conf"
+
+if [ $2 ]; then
+        config_path=$2
+fi
+
+if [ ! -f "$config_path" ]; then
+        echo "$0: configuration file $config_path not found"
+        exit 0
+fi
+
+cmd="/usr/bin/radosgw-agent -c $config_path"
+
+name=`basename $config_path`
+pid_file="/var/run/ceph/radosgw-agent/$name.pid"
+
+is_running() {
+        [ -e "$pid_file" ] || return 1
+        pid=`cat "$pid_file"`
+        [ -e "/proc/$pid" ] && grep -q "/usr/bin/radosgw-agent.-c.$config_path" "/proc/$pid/cmdline" && return 0
+        return 1
+}
+
+case "$1" in
+        start)
+        if is_running; then
+                echo "Already started"
+                exit 0
+        fi
+        echo "Starting radosgw-agent $name"
+        cd "$dir"
+        $cmd > /dev/null 2>&1 &
+        echo $! > "$pid_file"
+        if ! is_running; then
+               echo "Unable to start, see /var/log/ceph/radosgw-agent/"
+               exit 1
+        fi
+        ;;
+
+        stop)
+        if is_running; then
+                echo -n "Stopping radosgw-agent $name.."
+                pid=`cat "$pid_file"`
+                kill $pid
+                for i in {1..10}
+                do
+                        if ! is_running; then
+                                break
+                        fi
+
+                        echo -n "."
+                        sleep 1
+                done
+
+                if is_running; then
+                        echo "Not stopped; may still be shutting down or shutdown may have failed"
+                        exit 1
+                else
+                        echo "Stopped"
+                        rm "$pid_file"
+                fi
+        else
+                echo "Not running"
+        fi
+        ;;
+        restart)
+                $0 stop $name
+                if is_running; then
+                        echo "Unable to stop, will not attempt to start"
+                        exit 1
+                fi
+                $0 start $name
+        ;;
+        status)
+                if is_running; then
+                        echo "Running"
+                else
+                        echo "Stopped"
+                        exit 1
+                fi
+        ;;
+        *)
+                echo "Usage: $0 {start|stop|restart|status} [config-file]"
+                exit 1
+        ;;
+esac
+exit 0

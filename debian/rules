@@ -6,3 +6,7 @@ export DH_VERBOSE=1
 %:
 	dh $@ --buildsystem python_distutils --with python2
 
+override_dh_installinit:
+	install -d -m0755 debian/radosgw-agent/etc/init
+	install -m0644 init-radosgw-agent debian/radosgw-agent/etc/init
+	dh_installinit --no-start
