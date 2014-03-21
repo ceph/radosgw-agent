@@ -60,10 +60,14 @@ class Lock(threading.Thread):
         """
         log.debug('acquire lock')
         with self.lock:
-            now = time.time()
-            client.lock_shard(self.conn, self.type, self.shard_num,
-                              self.zone_id, self.timeout, self.locker_id)
-            self.last_locked = now
+            self._acquire()
+
+    def _acquire(self):
+        # same as aqcuire() but assumes self.lock is held
+        now = time.time()
+        client.lock_shard(self.conn, self.type, self.shard_num,
+                          self.zone_id, self.timeout, self.locker_id)
+        self.last_locked = now
 
     def release_and_clear(self):
         """Release the lock currently being held.
@@ -92,11 +96,12 @@ class Lock(threading.Thread):
 
     def run(self):
         while True:
-            if self.shard_num is not None:
-                try:
-                    self.acquire()
-                except client.HttpError as e:
-                    log.error('locking shard %d in zone %s failed: %s',
-                              self.shard_num, self.zone_id, e)
-                    self.failed = True
+            with self.lock:
+                if self.shard_num is not None:
+                    try:
+                        self._acquire()
+                    except client.HttpError as e:
+                        log.error('locking shard %d in zone %s failed: %s',
+                                  self.shard_num, self.zone_id, e)
+                        self.failed = True
             time.sleep(0.5 * self.timeout)
