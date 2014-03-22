@@ -1,0 +1,21 @@
+#!/usr/bin/env python
+import os
+import platform
+import sys
+"""
+radosgw-agent - admin tool for ceph
+"""
+
+if os.path.exists('/usr/share/pyshared/radosgw_agent'):
+    sys.path.insert(0,'/usr/share/pyshared/radosgw_agent')
+elif os.path.exists('/usr/share/radosgw-agent'):
+    sys.path.insert(0,'/usr/share/radosgw-agent')
+elif os.path.exists('/usr/share/pyshared/radosgw-agent'):
+    sys.path.insert(0,'/usr/share/pyshared/radosgw-agent')
+elif os.path.exists('/usr/lib/python2.6/site-packages/radosgw_agent'):
+    sys.path.insert(0,'/usr/lib/python2.6/site-packages/radosgw_agent')
+
+from radosgw_agent.cli import main
+
+if __name__ == '__main__':
+    sys.exit(main())
