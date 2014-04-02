@@ -1,3 +1,9 @@
+radosgw-agent (1.2-1) precise; urgency=low
+
+  * new upstream release
+
+ -- Sandon Van Ness <sandon@inktank.com>  Wed, 02 April 2014 11:25:54 -0800
+
 radosgw-agent (1.1-1) precise; urgency=low
 
   * new upstream release 
