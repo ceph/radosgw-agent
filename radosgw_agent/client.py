@@ -182,7 +182,7 @@ def get_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'get', 'admin/opstate',
                    params={
                        'op-id': op_id,
-                       'object': '{0}/{1}'.format(bucket, obj),
+                       'object': u'{0}/{1}'.format(bucket, obj),
                        'client-id': client_id,
                       }
                    )
@@ -191,7 +191,7 @@ def remove_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'delete', 'admin/opstate',
                    params={
                        'op-id': op_id,
-                       'object': '{0}/{1}'.format(bucket, obj),
+                       'object': u'{0}/{1}'.format(bucket, obj),
                        'client-id': client_id,
                       },
                    expect_json=False,
@@ -213,9 +213,9 @@ def delete_object(connection, bucket_name, object_name):
 
 def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
                              client_id, op_id):
-    path = '{bucket}/{object}'.format(
-        bucket=url_safe(bucket_name),
-        object=url_safe(object_name),
+    path = u'{bucket}/{object}'.format(
+        bucket=bucket_name,
+        object=object_name,
         )
     return request(connection, 'put', path,
                    params={
