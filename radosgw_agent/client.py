@@ -317,6 +317,23 @@ def del_worker_bound(connection, type_, daemon_id, id_, index_by_instance = True
         expect_json=False,
         )
 
+def purge_bounds(connection, type_, id_, index_by_instance = True):
+    key = _id_name(type_)
+    p ={
+        'type': type_,
+        key: id_,
+        'purge-all': 'true',
+    }
+    if not index_by_instance:
+        p['index-by-instance'] = 'false'
+
+    return request(
+        connection, 'delete', 'admin/replica_log',
+        params=p,
+        special_first_param='work_bound',
+        expect_json=False,
+        )
+
 def get_worker_bound(connection, type_, id_):
     key = _id_name(type_)
     try:
@@ -353,9 +370,8 @@ def get_worker_bound(connection, type_, id_):
 
             boto.log.debug('entities: %r', entities)
 
-            for e in entities:
-                boto.log.debug('removing entity: %r', e)
-                del_worker_bound(connection, type_, e, id_, index_by_instance = False)
+            boto.log.debug('purging all bounds for: %r', id_)
+            purge_bounds(connection, type_, id_, index_by_instance = False)
 
             raise
 
