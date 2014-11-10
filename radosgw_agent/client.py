@@ -86,7 +86,7 @@ def boto_call(func):
     @functools.wraps(func)
     def translate_exception(*args, **kwargs):
         try:
-            func(*args, **kwargs)
+            return func(*args, **kwargs)
         except boto.exception.S3ResponseError as e:
             raise code_to_exc.get(e.status, HttpError)(e.status, e.body)
     return translate_exception
