@@ -365,9 +365,6 @@ class DataWorkerFull(DataWorker):
             except client.NotFound:
                 marker = ''
             log.debug('bucket instance is "%s" with marker %s', instance, marker)
-            # nothing to do for this bucket
-            if not marker:
-                return True
 
             objects = client.list_objects_in_bucket(self.src_conn, bucket)
             if not objects:
