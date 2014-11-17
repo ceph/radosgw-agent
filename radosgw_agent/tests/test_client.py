@@ -1,6 +1,19 @@
 import py.test
+from mock import Mock
 
 from radosgw_agent import client
+
+# parametrization helpers
+
+def endpoints():
+    return [
+        ('http://example.org', 'example.org', 80, False),
+        ('https://example.org', 'example.org', 443, True),
+        ('https://example.org:8080', 'example.org', 8080, True),
+        ('https://example.org:8080/', 'example.org', 8080, True),
+        ('http://example.org:81/a/b/c?b#d', 'example.org', 81, False),
+    ]
+
 
 REGION_MAP = {
     "regions": [
@@ -175,19 +188,22 @@ def test_endpoint_inequality():
     assert base != diff_port
     assert base != insecure
 
-def test_parse_endpoint():
-    endpoints = {
-        'http://example.org': ('example.org', 80, False),
-        'https://example.org': ('example.org', 443, True),
-        'https://example.org:8080': ('example.org', 8080, True),
-        'https://example.org:8080/': ('example.org', 8080, True),
-        'http://example.org:81/a/b/c?b#d': ('example.org', 81, False),
-        }
-    for url, (host, port, secure) in endpoints.iteritems():
-        endpoint = client.parse_endpoint(url)
-        assert endpoint.port == port
-        assert endpoint.host == host
-        assert endpoint.secure == secure
+
+@py.test.mark.parametrize('url, host, port, secure', endpoints())
+def test_parse_endpoint(url, host, port, secure):
+    endpoint = client.parse_endpoint(url)
+    assert endpoint.port == port
+    assert endpoint.host == host
+    assert endpoint.secure == secure
+
+
+@py.test.mark.parametrize('url, host, port, secure', endpoints())
+def test_parse_repr(url, host, port, secure):
+    endpoint = repr(client.parse_endpoint(url))
+    assert str(secure) in endpoint
+    assert str(host) in endpoint
+    assert str(port) in endpoint
+
 
 def test_parse_endpoint_bad_input():
     with py.test.raises(client.InvalidProtocol):
@@ -302,3 +318,36 @@ def test_configure_endpoints_unknown_zone():
     with py.test.raises(client.ZoneNotFound):
         _test_configure_endpoints('http://vit:8005', 'skinny', 'skinny-1',
                                   'http://vit:8001', 'skinny', 'skinny-1')
+
+def http_invalid_status_codes():
+    return [
+        101, 102, 300, 301, 302, 303, 304, 305, 306, 307, 308,
+    ]
+
+def http_valid_status_codes():
+    return [
+        200, 201, 202, 203, 204, 205, 207, 208, 226,
+    ]
+
+class TestCheckResultStatus(object):
+
+    @py.test.mark.parametrize('code', http_invalid_status_codes())
+    def test_check_raises_http_error(self, code):
+        response = Mock()
+        response.status_code = code
+        with py.test.raises(client.HttpError):
+            client.check_result_status(response)
+
+    @py.test.mark.parametrize('code', http_valid_status_codes())
+    def test_check_does_not_raise_http_error(self, code):
+        response = Mock()
+        response.status_code = code
+        assert client.check_result_status(response) is None
+
+
+    def test_check_raises_not_found(self):
+        response = Mock()
+        response.status_code = 404
+        with py.test.raises(client.NotFound):
+            client.check_result_status(response)
+
