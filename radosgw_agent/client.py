@@ -71,6 +71,7 @@ def parse_endpoint(endpoint):
 class HttpError(ClientException):
     def __init__(self, code, body):
         self.code = code
+        self.str_code = str(code)
         self.body = body
         self.message = 'Http error code %s content %s' % (code, body)
     def __str__(self):
