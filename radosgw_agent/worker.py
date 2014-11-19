@@ -219,7 +219,7 @@ class DataWorker(Worker):
                 client.remove_op_state(self.dest_conn, self.daemon_id,
                                        local_op_id, bucket, obj)
         except Exception:
-            log.error('could not remove op state for daemon "%s" op_id %s',
+            log.exception('could not remove op state for daemon "%s" op_id %s',
                           self.daemon_id, local_op_id)
 
         return True
