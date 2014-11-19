@@ -174,16 +174,16 @@ class DataWorker(Worker):
         log.debug('sync_object %s/%s', bucket, obj)
         self.op_id += 1
         local_op_id = self.local_lock_id + ':' +  str(self.op_id)
+        found = False
 
         try:
-            found = True
             until = time.time() + self.object_sync_timeout
             client.sync_object_intra_region(self.dest_conn, bucket, obj,
                                             self.src.zone.name,
                                             self.daemon_id,
                                             local_op_id)
+            found = True
         except client.NotFound:
-            found = False
             log.debug('"%s/%s" not found on master, deleting from secondary',
                       bucket, obj)
             try:
