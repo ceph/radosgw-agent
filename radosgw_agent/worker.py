@@ -174,13 +174,14 @@ class DataWorker(Worker):
         log.debug('sync_object %s/%s', bucket, obj)
         self.op_id += 1
         local_op_id = self.local_lock_id + ':' +  str(self.op_id)
+
         try:
+            found = True
             until = time.time() + self.object_sync_timeout
             client.sync_object_intra_region(self.dest_conn, bucket, obj,
                                             self.src.zone.name,
                                             self.daemon_id,
                                             local_op_id)
-            found = True
         except client.NotFound:
             found = False
             log.debug('"%s/%s" not found on master, deleting from secondary',
@@ -189,11 +190,23 @@ class DataWorker(Worker):
                 client.delete_object(self.dest_conn, bucket, obj)
             except client.NotFound:
                 # Since we were trying to delete the object, just return
-                return
+                return False
             except Exception:
                 msg = 'could not delete "%s/%s" from secondary' % (bucket, obj)
                 log.exception(msg)
                 raise SyncFailed(msg)
+        except client.HttpError as e:
+            # if we have a non-critical Http error, raise a SyncFailed
+            # so that we can retry this. The Gateway may be returning 400's
+            if e.str_code[0] in ['3', '4']:
+                msg = 'encountered an HTTP error with status: %s' % e.str_code
+                raise SyncFailed(msg)
+            else:
+                # if the error is critical, as in anything that is a 500
+                # raise
+                log.exception('got a critical http error from client')
+                raise
+
         except SyncFailed:
             raise
         except Exception as e:
@@ -206,8 +219,10 @@ class DataWorker(Worker):
                 client.remove_op_state(self.dest_conn, self.daemon_id,
                                        local_op_id, bucket, obj)
         except Exception:
-            log.exception('could not remove op state for daemon "%s" op_id %s',
+            log.error('could not remove op state for daemon "%s" op_id %s',
                           self.daemon_id, local_op_id)
+
+        return True
 
     def wait_for_object(self, bucket, obj, until, local_op_id):
         while time.time() < until:
