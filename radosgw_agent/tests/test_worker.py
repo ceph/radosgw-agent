@@ -113,3 +113,15 @@ class TestSyncObject(object):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             w.wait_for_object = lambda *a: None
             assert w.sync_object('mah-bucket', 'mah-object') is True
+
+    def test_fails_so_found_is_still_false(self):
+        self.client.sync_object_intra_region = Mock(side_effect=ValueError('severe error'))
+
+        with patch('radosgw_agent.worker.client', self.client):
+            w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
+
+            # we intersect this dude so that we know it should not be called
+            # by making it raise an exception if it does
+            msg = 'should not have called wait_for_object'
+            w.wait_for_object = Mock(side_effect=AssertionError(msg))
+            assert w.sync_object('mah-bucket', 'mah-object') is True
