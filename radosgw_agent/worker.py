@@ -198,15 +198,8 @@ class DataWorker(Worker):
         except client.HttpError as e:
             # if we have a non-critical Http error, raise a SyncFailed
             # so that we can retry this. The Gateway may be returning 400's
-            if e.str_code[0] in ['3', '4']:
-                msg = 'encountered an HTTP error with status: %s' % e.str_code
-                raise SyncFailed(msg)
-            else:
-                # if the error is critical, as in anything that is a 500
-                # raise
-                log.exception('got a critical http error from client')
-                raise
-
+            msg = 'encountered an HTTP error with status: %s' % e.str_code
+            raise SyncFailed(msg)
         except SyncFailed:
             raise
         except Exception as e:

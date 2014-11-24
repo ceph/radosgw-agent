@@ -81,11 +81,11 @@ class TestSyncObject(object):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             w.wait_for_object = lambda *a: None
 
-            with py.test.raises(client.HttpError) as exc:
+            with py.test.raises(worker.SyncFailed) as exc:
                 w.sync_object('mah-bucket', 'mah-object')
 
             exc_message = exc.exconly()
-            assert 'error code 500 content Internal Server Error' in exc_message
+            assert 'HTTP error with status: 500' in exc_message
 
     def test_fails_to_remove_op_state(self, capsys):
         # really tricky to test this one, we are forced to just use `capsys` from py.test
