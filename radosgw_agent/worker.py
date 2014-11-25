@@ -233,6 +233,8 @@ class DataWorker(Worker):
                 time.sleep(1)
             except SyncFailed:
                 raise
+            except client.NotFound:
+                raise SyncFailed('object copy state not found')
             except Exception as e:
                 log.debug('error geting op state: %s', e, exc_info=True)
                 time.sleep(1)
