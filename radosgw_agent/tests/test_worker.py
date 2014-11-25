@@ -136,3 +136,27 @@ class TestSyncObject(object):
 
         exc_message = exc.exconly()
         assert 'state not found' in exc_message
+
+    def test_wait_for_object_timeout(self):
+        msg = 'should not have called get_op_state'
+        self.client.get_op_state = Mock(side_effect=AssertionError(msg))
+        with patch('radosgw_agent.worker.client', self.client):
+            w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
+            with py.test.raises(worker.SyncTimedOut) as exc:
+                w.wait_for_object(None, None, time.time() - 1, None)
+
+    def test_wait_for_object_state_complete(self):
+        with patch('radosgw_agent.worker.client', self.client):
+            w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
+            self.client.get_op_state = lambda *a: [{'state': 'complete'}]
+            assert w.wait_for_object(None, None, time.time() + 1, None) is None
+
+    def test_wait_for_object_state_error(self):
+        with patch('radosgw_agent.worker.client', self.client):
+            w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
+            self.client.get_op_state = lambda *a: [{'state': 'error'}]
+            with py.test.raises(worker.SyncFailed) as exc:
+                w.wait_for_object(None, None, time.time() + 1, None)
+
+        exc_message = exc.exconly()
+        assert 'state is error' in exc_message
