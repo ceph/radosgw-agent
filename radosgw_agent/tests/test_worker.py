@@ -1,5 +1,6 @@
 from mock import Mock, patch
 import py.test
+import time
 
 from radosgw_agent import worker, client
 
@@ -125,3 +126,13 @@ class TestSyncObject(object):
             msg = 'should not have called wait_for_object'
             w.wait_for_object = Mock(side_effect=AssertionError(msg))
             assert w.sync_object('mah-bucket', 'mah-object') is True
+
+    def test_wait_for_object_state_not_found_raises_sync_failed(self):
+        self.client.get_op_state = Mock(side_effect=client.NotFound(404, ''))
+        with patch('radosgw_agent.worker.client', self.client):
+            w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
+            with py.test.raises(worker.SyncFailed) as exc:
+                w.wait_for_object(None, None, time.time() + 1000, None)
+
+        exc_message = exc.exconly()
+        assert 'state not found' in exc_message
