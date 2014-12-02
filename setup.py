@@ -29,6 +29,7 @@ setup(
     test_requires=[
         'pytest >=2.1.3',
         'mock >=1.0',
+        'httpretty',
         ],
 
     entry_points={
