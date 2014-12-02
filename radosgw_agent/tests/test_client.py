@@ -450,3 +450,74 @@ class TestBotoCall(object):
 
         with py.test.raises(ValueError):
             foo()
+
+
+class TestRequest(object):
+
+    @httpretty.activate
+    def test_url(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{}',
+            content_type="application/json",
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        client.request(connection, 'get', '/%7E~')
+        server_request = httpretty.last_request()
+        assert server_request.path == '/%257E%7E/'
+
+    @httpretty.activate
+    def test_url_response(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{"msg": "ok"}',
+            content_type="application/json",
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        result = client.request(connection, 'get', '/%7E~')
+        assert result == {'msg': 'ok'}
+
+    @httpretty.activate
+    def test_url_bad(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{}',
+            content_type="application/json",
+            status=500,
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        with py.test.raises(client.HttpError):
+            client.request(connection, 'get', '/%7E~', _retries=0)
