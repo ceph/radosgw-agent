@@ -3,11 +3,11 @@ import functools
 import json
 import logging
 import random
-import requests
 import urllib
 from urlparse import urlparse
 
 from boto.connection import AWSAuthConnection
+from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
 
 log = logging.getLogger(__name__)
@@ -97,6 +97,7 @@ Adapted from the build_request() method of boto.connection
 
 def _build_request(conn, method, basepath='', resource = '', headers=None,
                    data=None, special_first_param=None, params=None):
+
     path = conn.calling_format.build_path_base(basepath, resource)
     auth_path = conn.calling_format.build_auth_path(basepath, resource)
     host = conn.calling_format.build_host(conn.server_name(), '')
@@ -111,9 +112,9 @@ def _build_request(conn, method, basepath='', resource = '', headers=None,
         conn, method, path, auth_path, params, headers, data, host)
 
 def check_result_status(result):
-    if result.status_code / 100 != 2:
-        raise code_to_exc.get(result.status_code,
-                              HttpError)(result.status_code, result.content)
+    if result.status / 100 != 2:
+        raise code_to_exc.get(result.status,
+                              HttpError)(result.status, result.reason)
 def url_safe(component):
     if isinstance(component, basestring):
         string = component.encode('utf8')
@@ -122,7 +123,7 @@ def url_safe(component):
     return urllib.quote(string)
 
 def request(connection, type_, resource, params=None, headers=None,
-            data=None, expect_json=True, special_first_param=None):
+            data=None, expect_json=True, special_first_param=None, _retries=3):
     if headers is None:
         headers = {}
 
@@ -147,16 +148,25 @@ def request(connection, type_, resource, params=None, headers=None,
 
     request.authorize(connection=connection)
 
-    handler = getattr(requests, type_)
     boto.log.debug('url = %r\nparams=%r\nheaders=%r\ndata=%r',
                    url, params, request.headers, data)
-    result = handler(url, params=params, headers=request.headers, data=data)
+    try:
+        result = connection.make_request(
+            request.method,
+            request.path,
+            request.body,
+            headers=request.headers,
+            override_num_retries=_retries)
+    except BotoServerError as error:
+        check_result_status(error)
 
     check_result_status(result)
 
     if data or not expect_json:
         return result.raw
-    return result.json()
+
+    return json.loads(result.read())
+
 
 def get_metadata(connection, section, name):
     return request(connection, 'get', 'admin/metadata/' + section,
