@@ -6,7 +6,8 @@ import random
 import urllib
 from urlparse import urlparse
 
-from boto.connection import AWSAuthConnection
+#from boto.connection import AWSAuthConnection
+from radosgw_agent import request as aws_request
 from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
 
@@ -91,26 +92,6 @@ def boto_call(func):
     return translate_exception
 
 
-"""
-Adapted from the build_request() method of boto.connection
-"""
-
-def _build_request(conn, method, basepath='', resource = '', headers=None,
-                   data=None, special_first_param=None, params=None):
-
-    path = conn.calling_format.build_path_base(basepath, resource)
-    auth_path = conn.calling_format.build_auth_path(basepath, resource)
-    host = conn.calling_format.build_host(conn.server_name(), '')
-
-    if special_first_param:
-        path += '?' + special_first_param
-        boto.log.debug('path=%s' % path)
-        auth_path += '?' + special_first_param
-        boto.log.debug('auth_path=%s' % auth_path)
-
-    return AWSAuthConnection.build_base_http_request(
-        conn, method, path, auth_path, params, headers, data, host)
-
 def check_result_status(result):
     if result.status / 100 != 2:
         raise code_to_exc.get(result.status,
@@ -134,7 +115,7 @@ def request(connection, type_, resource, params=None, headers=None,
     if params is None:
         params = {}
     safe_params = dict([(k, url_safe(v)) for k, v in params.iteritems()])
-    request = _build_request(connection,
+    request = aws_request.base_http_request(connection,
                              type_.upper(),
                              resource=resource,
                              special_first_param=special_first_param,
@@ -151,12 +132,15 @@ def request(connection, type_, resource, params=None, headers=None,
     boto.log.debug('url = %r\nparams=%r\nheaders=%r\ndata=%r',
                    url, params, request.headers, data)
     try:
-        result = connection.make_request(
-            request.method,
-            request.path,
-            request.body,
-            headers=request.headers,
-            override_num_retries=_retries)
+        result = aws_request.make_request(
+            connection,
+            type_.upper(),
+            resource=resource,
+            special_first_param=special_first_param,
+            headers=headers,
+            data=request_data,
+            params=safe_params,
+            _retries=_retries)
     except BotoServerError as error:
         check_result_status(error)
 
