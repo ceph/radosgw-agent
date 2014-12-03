@@ -6,7 +6,6 @@ import random
 import urllib
 from urlparse import urlparse
 
-#from boto.connection import AWSAuthConnection
 from radosgw_agent import request as aws_request
 from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
