@@ -402,9 +402,9 @@ class TestRequest(object):
             debug=True,
         )
 
-        client.request(connection, 'get', '/%7E~')
+        client.request(connection, 'get', '/%7E~', _retries=0)
         server_request = httpretty.last_request()
-        assert server_request.path == '/%257E%7E/'
+        assert server_request.path == '/%257E%7E'
 
     @httpretty.activate
     def test_url_response(self):
@@ -425,7 +425,7 @@ class TestRequest(object):
             debug=True,
         )
 
-        result = client.request(connection, 'get', '/%7E~')
+        result = client.request(connection, 'get', '/%7E~', _retries=0)
         assert result == {'msg': 'ok'}
 
     @httpretty.activate
