@@ -205,7 +205,8 @@ def get_bucket_list(connection):
 def list_objects_in_bucket(connection, bucket_name):
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
-    return bucket.list()
+    for key in bucket.list():
+        yield key.name
 
 @boto_call
 def delete_object(connection, bucket_name, object_name):
