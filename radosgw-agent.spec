@@ -19,7 +19,6 @@ Requires: python-argparse
 Requires: PyYAML
 Requires: python-boto >= 2.2.2
 Requires: python-boto < 3.0.0
-Requires: python-requests
 Url: https://github.com/ceph/radosgw-agent
 
 %description

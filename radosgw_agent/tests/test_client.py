@@ -1,6 +1,8 @@
 import boto
 import py.test
 from mock import Mock
+import httpretty
+import re
 
 from radosgw_agent import client
 
@@ -330,29 +332,6 @@ def http_valid_status_codes():
         200, 201, 202, 203, 204, 205, 207, 208, 226,
     ]
 
-class TestCheckResultStatus(object):
-
-    @py.test.mark.parametrize('code', http_invalid_status_codes())
-    def test_check_raises_http_error(self, code):
-        response = Mock()
-        response.status_code = code
-        with py.test.raises(client.HttpError):
-            client.check_result_status(response)
-
-    @py.test.mark.parametrize('code', http_valid_status_codes())
-    def test_check_does_not_raise_http_error(self, code):
-        response = Mock()
-        response.status_code = code
-        assert client.check_result_status(response) is None
-
-
-    def test_check_raises_not_found(self):
-        response = Mock()
-        response.status_code = 404
-        with py.test.raises(client.NotFound):
-            client.check_result_status(response)
-
-
 class TestBotoCall(object):
 
     def test_return_val(self):
@@ -377,3 +356,95 @@ class TestBotoCall(object):
 
         with py.test.raises(ValueError):
             foo()
+
+class TestCheckResultStatus(object):
+
+    @py.test.mark.parametrize('code', http_invalid_status_codes())
+    def test_check_raises_http_error(self, code):
+        response = Mock()
+        response.status = code
+        with py.test.raises(client.HttpError):
+            client.check_result_status(response)
+
+    @py.test.mark.parametrize('code', http_valid_status_codes())
+    def test_check_does_not_raise_http_error(self, code):
+        response = Mock()
+        response.status = code
+        assert client.check_result_status(response) is None
+
+
+    def test_check_raises_not_found(self):
+        response = Mock()
+        response.status = 404
+        with py.test.raises(client.NotFound):
+            client.check_result_status(response)
+
+class TestRequest(object):
+
+    @httpretty.activate
+    def test_url(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{}',
+            content_type="application/json",
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        client.request(connection, 'get', '/%7E~', _retries=0)
+        server_request = httpretty.last_request()
+        assert server_request.path == '/%257E%7E'
+
+    @httpretty.activate
+    def test_url_response(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{"msg": "ok"}',
+            content_type="application/json",
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        result = client.request(connection, 'get', '/%7E~', _retries=0)
+        assert result == {'msg': 'ok'}
+
+    @httpretty.activate
+    def test_url_bad(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{}',
+            content_type="application/json",
+            status=500,
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        with py.test.raises(client.HttpError):
+            client.request(connection, 'get', '/%7E~', _retries=0)
