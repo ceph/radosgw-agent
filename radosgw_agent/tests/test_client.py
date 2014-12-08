@@ -1,3 +1,4 @@
+import boto
 import py.test
 from mock import Mock
 
@@ -351,3 +352,28 @@ class TestCheckResultStatus(object):
         with py.test.raises(client.NotFound):
             client.check_result_status(response)
 
+
+class TestBotoCall(object):
+
+    def test_return_val(self):
+        @client.boto_call
+        def foo(*args, **kwargs):
+            return (args, kwargs)
+        assert foo(1) == ((1,), {})
+        assert foo(b=2) == (tuple(), {'b': 2})
+
+    def test_boto_exception_not_found(self):
+        @client.boto_call
+        def foo():
+            raise boto.exception.S3ResponseError(404, '')
+
+        with py.test.raises(client.NotFound):
+            foo()
+
+    def test_non_boto_exception(self):
+        @client.boto_call
+        def foo():
+            raise ValueError('')
+
+        with py.test.raises(ValueError):
+            foo()

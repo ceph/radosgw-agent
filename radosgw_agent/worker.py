@@ -174,30 +174,36 @@ class DataWorker(Worker):
         log.debug('sync_object %s/%s', bucket, obj)
         self.op_id += 1
         local_op_id = self.local_lock_id + ':' +  str(self.op_id)
+        found = False
+
         try:
-            found = True
             until = time.time() + self.object_sync_timeout
             client.sync_object_intra_region(self.dest_conn, bucket, obj,
                                             self.src.zone.name,
                                             self.daemon_id,
                                             local_op_id)
+            found = True
         except client.NotFound:
-            found = False
             log.debug('"%s/%s" not found on master, deleting from secondary',
                       bucket, obj)
             try:
                 client.delete_object(self.dest_conn, bucket, obj)
             except client.NotFound:
                 # Since we were trying to delete the object, just return
-                return
+                return False
             except Exception:
                 msg = 'could not delete "%s/%s" from secondary' % (bucket, obj)
                 log.exception(msg)
                 raise SyncFailed(msg)
+        except client.HttpError as e:
+            # if we have a non-critical Http error, raise a SyncFailed
+            # so that we can retry this. The Gateway may be returning 400's
+            msg = 'encountered an HTTP error with status: %s' % e.str_code
+            raise SyncFailed(msg)
         except SyncFailed:
             raise
         except Exception as e:
-            log.debug('exception during sync: %s', e)
+            log.exception('encountered an exception during sync')
             if found:
                 self.wait_for_object(bucket, obj, until, local_op_id)
         # TODO: clean up old op states
@@ -208,6 +214,8 @@ class DataWorker(Worker):
         except Exception:
             log.exception('could not remove op state for daemon "%s" op_id %s',
                           self.daemon_id, local_op_id)
+
+        return True
 
     def wait_for_object(self, bucket, obj, until, local_op_id):
         while time.time() < until:
@@ -225,6 +233,8 @@ class DataWorker(Worker):
                 time.sleep(1)
             except SyncFailed:
                 raise
+            except client.NotFound:
+                raise SyncFailed('object copy state not found')
             except Exception as e:
                 log.debug('error geting op state: %s', e, exc_info=True)
                 time.sleep(1)
@@ -350,9 +360,6 @@ class DataWorkerFull(DataWorker):
             except client.NotFound:
                 marker = ''
             log.debug('bucket instance is "%s" with marker %s', instance, marker)
-            # nothing to do for this bucket
-            if not marker:
-                return True
 
             objects = client.list_objects_in_bucket(self.src_conn, bucket)
             if not objects:

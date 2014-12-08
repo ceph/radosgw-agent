@@ -71,6 +71,7 @@ def parse_endpoint(endpoint):
 class HttpError(ClientException):
     def __init__(self, code, body):
         self.code = code
+        self.str_code = str(code)
         self.body = body
         self.message = 'Http error code %s content %s' % (code, body)
     def __str__(self):
@@ -85,7 +86,7 @@ def boto_call(func):
     @functools.wraps(func)
     def translate_exception(*args, **kwargs):
         try:
-            func(*args, **kwargs)
+            return func(*args, **kwargs)
         except boto.exception.S3ResponseError as e:
             raise code_to_exc.get(e.status, HttpError)(e.status, e.body)
     return translate_exception
@@ -204,7 +205,8 @@ def get_bucket_list(connection):
 def list_objects_in_bucket(connection, bucket_name):
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
-    return bucket.list()
+    for key in bucket.list():
+        yield key.name
 
 @boto_call
 def delete_object(connection, bucket_name, object_name):
@@ -224,7 +226,7 @@ def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
                        'rgwx-op-id': op_id,
                        },
                    headers={
-                       'x-amz-copy-source': '%s/%s' % (bucket_name, object_name),
+                       'x-amz-copy-source': url_safe('%s/%s' % (bucket_name, object_name)),
                        },
                    expect_json=False)
 
