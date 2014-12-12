@@ -157,8 +157,13 @@ class Syncer(object):
                 log.debug('synced item %r successfully', item)
                 self.complete_item(shard_num, retries)
             else:
-                log.error('error syncing shard %d', shard_num)
-                retries.append(shard_num)
+                try:
+                    if isinstance(result, Exception):
+                        raise result
+                except Exception:
+                    log.exception('error syncing shard %d', shard_num)
+                else:
+                    log.error('error syncing shard %d', shard_num)
 
             log.info('%d/%d items processed', i + 1, num_items)
         if retries:

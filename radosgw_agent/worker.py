@@ -364,45 +364,49 @@ class DataWorkerFull(DataWorker):
             objects = client.list_objects_in_bucket(self.src_conn, bucket)
             if not objects:
                 return True
+
+            retries = self.sync_bucket(bucket, objects)
+
+            result = self.set_bound(instance, marker, retries, 'bucket-index')
+            return not retries and result == RESULT_SUCCESS
         except Exception as e:
-            log.error('error preparing for full sync of bucket "%s": %s',
-                      bucket, e)
+            log.exception('error preparing for full sync of bucket "%s"',
+                          bucket)
             return False
-
-        retries = self.sync_bucket(bucket, objects)
-
-        result = self.set_bound(instance, marker, retries, 'bucket-index')
-        return not retries and result == RESULT_SUCCESS
 
     def run(self):
         self.prepare_lock()
         while True:
-            item = self.work_queue.get()
-            if item is None:
-                log.info('No more entries in queue, exiting')
-                break
-
-            shard_num, buckets = item
-
-            # first, lock the log
             try:
-                self.lock_shard(shard_num)
-            except SkipShard:
-                continue
+                item = self.work_queue.get()
+                if item is None:
+                    log.info('No more entries in queue, exiting')
+                    break
 
-            # attempt to sync each bucket, add to a list to retry
-            # during incremental sync if sync fails
-            retry_buckets = []
-            for bucket in buckets:
-                if not self.full_sync_bucket(bucket):
-                    retry_buckets.append(bucket)
+                shard_num, buckets = item
 
-            # unlock shard and report buckets to retry during incremental sync
-            self.unlock_shard()
-            self.result_queue.put((RESULT_SUCCESS, (shard_num, retry_buckets)))
-            log.info('finished syncing shard %d', shard_num)
-            log.info('incremental sync will need to retry buckets: %s',
-                     retry_buckets)
+                # first, lock the log
+                try:
+                    self.lock_shard(shard_num)
+                except SkipShard:
+                    continue
+
+                # attempt to sync each bucket, add to a list to retry
+                # during incremental sync if sync fails
+                retry_buckets = []
+                for bucket in buckets:
+                    if not self.full_sync_bucket(bucket):
+                        retry_buckets.append(bucket)
+
+                # unlock shard and report buckets to retry during incremental sync
+                self.unlock_shard()
+                self.result_queue.put((RESULT_SUCCESS, (shard_num, retry_buckets)))
+                log.info('finished syncing shard %d', shard_num)
+                log.info('incremental sync will need to retry buckets: %s',
+                         retry_buckets)
+            except Exception as e:
+                log.exception('exception syncing shard %d', shard_num)
+                self.result_queue.put((e, (shard_num, [])))
 
 class MetadataWorker(Worker):
 
