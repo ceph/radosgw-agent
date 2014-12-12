@@ -361,8 +361,9 @@ class DataWorkerFull(DataWorker):
                 marker = ''
             log.debug('bucket instance is "%s" with marker %s', instance, marker)
 
-            objects = client.list_objects_in_bucket(self.src_conn, bucket)
-            if not objects:
+            try:
+                objects = client.list_objects_in_bucket(self.src_conn, bucket)
+            except client.NotFound:
                 return True
 
             retries = self.sync_bucket(bucket, objects)
