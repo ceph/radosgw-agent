@@ -98,6 +98,7 @@ class Worker(multiprocessing.Process):
                          ' may duplicate some work later. Traceback:', key,
                          exc_info=True)
                 return RESULT_ERROR
+        return RESULT_SUCCESS
 
 MetadataEntry = namedtuple('MetadataEntry',
                            ['section', 'name', 'marker', 'timestamp'])
@@ -190,6 +191,7 @@ class DataWorker(Worker):
                 client.delete_object(self.dest_conn, bucket, obj)
             except client.NotFound:
                 # Since we were trying to delete the object, just return
+                log.debug('"%s/%s" already gone on secondary', bucket, obj)
                 return False
             except Exception:
                 msg = 'could not delete "%s/%s" from secondary' % (bucket, obj)
@@ -364,6 +366,7 @@ class DataWorkerFull(DataWorker):
             try:
                 objects = client.list_objects_in_bucket(self.src_conn, bucket)
             except client.NotFound:
+                log.debug('no objects in bucket %s', bucket)
                 return True
 
             retries = self.sync_bucket(bucket, objects)
