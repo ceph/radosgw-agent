@@ -75,7 +75,9 @@ def make_request(conn, method, basepath='', resource='', headers=None,
                     result.append(
                         (k.encode('utf-8') if isinstance(k, str) else k,
                          v.encode('utf-8') if isinstance(v, str) else v))
-        md.path = '%s?%s' % (md.path, urlencode(result, doseq=True))
+        if md.special_first_param:
+        appending_char = '&' if md.special_first_param else '?'
+            md.path = '%s%s%s' % (md.path, appending_char, urlencode(result, doseq=True))
 
     return AWSAuthConnection.make_request(
         md.conn, md.method, md.path,
