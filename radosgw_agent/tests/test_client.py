@@ -475,7 +475,7 @@ class TestRequest(object):
 
         client.request(connection, 'get', '/%7E~')
         server_request = httpretty.last_request()
-        assert server_request.path == '/%257E%7E/'
+        assert server_request.path == '/%257E%7E'
 
     @httpretty.activate
     def test_url_response(self):
