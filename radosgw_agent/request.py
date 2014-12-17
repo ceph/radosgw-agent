@@ -1,6 +1,7 @@
 import boto
 import logging
 from boto.connection import AWSAuthConnection
+from urllib import urlencode
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +62,20 @@ def make_request(conn, method, basepath='', resource='', headers=None,
         special_first_param=special_first_param,
         params=params,
     )
+
+    if params:
+        # we basically need to do this ourselves now. BOTO doesn't do it for us
+        # in make_request
+        result = []
+        for k, vs in params.items():
+            if isinstance(vs, basestring) or not hasattr(vs, '__iter__'):
+                vs = [vs]
+            for v in vs:
+                if v is not None:
+                    result.append(
+                        (k.encode('utf-8') if isinstance(k, str) else k,
+                         v.encode('utf-8') if isinstance(v, str) else v))
+        md.path = '%s?%s' % (md.path, urlencode(result, doseq=True))
 
     return AWSAuthConnection.make_request(
         md.conn, md.method, md.path,
