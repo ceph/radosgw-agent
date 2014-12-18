@@ -495,6 +495,14 @@ class TestGETClientRequests(object):
         assert server_request.path == '/admin/metadata/foo'
 
     @httpretty.activate
+    def test_get_bucket_list(self):
+        self.register()
+        client.get_bucket_list(self.connection)
+        server_request = httpretty.last_request()
+        assert server_request.path == '/admin/metadata/bucket'
+
+
+    @httpretty.activate
     def test_url_response(self):
 
         httpretty.register_uri(
