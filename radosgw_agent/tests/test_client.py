@@ -502,9 +502,17 @@ class TestGETClientRequests(object):
     @httpretty.activate
     def test_get_metadata(self):
         self.register()
-        client.get_metadata(self.connection, 'metadata', 'foo')
+        client.get_metadata(self.connection, 'bucket.instance', 'foo')
         server_request = httpretty.last_request()
-        assert server_request.path == '/admin/metadata/metadata?key=foo'
+        assert server_request.path == '/admin/metadata/bucket.instance?key=foo'
+
+    @httpretty.activate
+    def test_get_metadata_no_re_encoding(self):
+        self.register()
+        #client.get_metadata(self.connection, 'bucket.instance', 'mybar%3Ar0z0.4140.1')
+        client.get_metadata(self.connection, 'bucket.instance', 'mybar:r0z0.4140.1')
+        server_request = httpretty.last_request()
+        assert server_request.path == '/admin/metadata/bucket.instance?key=mybar%3Ar0z0.4140.1'
 
     @httpretty.activate
     def test_get_metadata_sections(self):
