@@ -156,21 +156,26 @@ def get_metadata(connection, section, name):
     return request(connection, 'get', 'admin/metadata/' + section,
                    params=dict(key=name))
 
+
 def update_metadata(connection, section, name, metadata):
     if not isinstance(metadata, basestring):
         metadata = json.dumps(metadata)
     return request(connection, 'put', 'admin/metadata/' + section,
                    params=dict(key=name), data=metadata)
 
+
 def delete_metadata(connection, section, name):
     return request(connection, 'delete', 'admin/metadata/' + section,
                    params=dict(key=name), expect_json=False)
 
+
 def get_metadata_sections(connection):
     return request(connection, 'get', 'admin/metadata')
 
+
 def list_metadata_keys(connection, section):
     return request(connection, 'get', 'admin/metadata/' + section)
+
 
 def get_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'get', 'admin/opstate',
@@ -180,6 +185,7 @@ def get_op_state(connection, client_id, op_id, bucket, obj):
                        'client-id': client_id,
                       }
                    )
+
 
 def remove_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'delete', 'admin/opstate',
@@ -194,6 +200,7 @@ def remove_op_state(connection, client_id, op_id, bucket, obj):
 def get_bucket_list(connection):
     return list_metadata_keys(connection, 'bucket')
 
+
 @boto_call
 def list_objects_in_bucket(connection, bucket_name):
     # use the boto library to do this
@@ -201,10 +208,12 @@ def list_objects_in_bucket(connection, bucket_name):
     for key in bucket.list():
         yield key.name
 
+
 @boto_call
 def delete_object(connection, bucket_name, object_name):
     bucket = connection.get_bucket(bucket_name)
     bucket.delete_key(object_name)
+
 
 def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
                              client_id, op_id):
@@ -223,6 +232,7 @@ def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
                        },
                    expect_json=False)
 
+
 def lock_shard(connection, lock_type, shard_num, zone_id, timeout, locker_id):
     return request(connection, 'post', 'admin/log',
                    params={
@@ -235,6 +245,7 @@ def lock_shard(connection, lock_type, shard_num, zone_id, timeout, locker_id):
                    special_first_param='lock',
                    expect_json=False)
 
+
 def unlock_shard(connection, lock_type, shard_num, zone_id, locker_id):
     return request(connection, 'post', 'admin/log',
                    params={
@@ -246,8 +257,10 @@ def unlock_shard(connection, lock_type, shard_num, zone_id, locker_id):
                    special_first_param='unlock',
                    expect_json=False)
 
+
 def _id_name(type_):
     return 'bucket-instance' if type_ == 'bucket-index' else 'id'
+
 
 def get_log(connection, log_type, marker, max_entries, id_):
     key = _id_name(log_type)
@@ -260,6 +273,7 @@ def get_log(connection, log_type, marker, max_entries, id_):
                        },
                    )
 
+
 def get_log_info(connection, log_type, id_):
     key = _id_name(log_type)
     return request(
@@ -271,9 +285,11 @@ def get_log_info(connection, log_type, id_):
         special_first_param='info',
         )
 
+
 def num_log_shards(connection, shard_type):
     out = request(connection, 'get', 'admin/log', dict(type=shard_type))
     return out['num_objects']
+
 
 def set_worker_bound(connection, type_, marker, timestamp,
                      daemon_id, id_, data=None):
@@ -294,6 +310,7 @@ def set_worker_bound(connection, type_, marker, timestamp,
         special_first_param='work_bound',
         )
 
+
 def del_worker_bound(connection, type_, daemon_id, id_):
     key = _id_name(type_)
     return request(
@@ -306,6 +323,7 @@ def del_worker_bound(connection, type_, daemon_id, id_):
         special_first_param='work_bound',
         expect_json=False,
         )
+
 
 def get_worker_bound(connection, type_, id_):
     key = _id_name(type_)
@@ -324,6 +342,7 @@ def get_worker_bound(connection, type_, id_):
         retries = retries.union(names)
     return out['marker'], out['oldest_time'], retries
 
+
 class Zone(object):
     def __init__(self, zone_info):
         self.name = zone_info['name']
@@ -337,6 +356,7 @@ class Zone(object):
 
     def __str__(self):
         return self.name
+
 
 class Region(object):
     def __init__(self, region_info):
@@ -357,6 +377,7 @@ class Region(object):
 
     def __str__(self):
         return str(self.zones.keys())
+
 
 class RegionMap(object):
     def __init__(self, region_map):
@@ -382,13 +403,16 @@ class RegionMap(object):
                     return region, zone
         raise ZoneNotFound('%s not found in region map' % endpoint)
 
+
 def get_region_map(connection):
     region_map = request(connection, 'get', 'admin/config')
     return RegionMap(region_map)
 
+
 def _validate_sync_dest(dest_region, dest_zone):
     if dest_region.is_master and dest_zone.is_master:
         raise InvalidZone('destination cannot be master zone of master region')
+
 
 def _validate_sync_source(src_region, src_zone, dest_region, dest_zone,
                           meta_only):
