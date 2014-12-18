@@ -59,6 +59,8 @@ class InvalidZone(ClientException):
     pass
 class ZoneNotFound(ClientException):
     pass
+class BucketEmpty(ClientException):
+    pass
 
 def parse_endpoint(endpoint):
     url = urlparse(endpoint)
@@ -205,8 +207,18 @@ def get_bucket_list(connection):
 def list_objects_in_bucket(connection, bucket_name):
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
-    for key in bucket.list():
-        yield key.name
+    try:
+        for key in bucket.list():
+            yield key.name
+    except boto.exception.S3ResponseError as e:
+        # since this is a generator, the exception will be raised when
+        # it's read, rather than when this call returns, so raise a
+        # unique exception to distinguish this from client errors from
+        # other calls
+        if e.status == 404:
+            raise BucketEmpty()
+        else:
+            raise
 
 
 @boto_call

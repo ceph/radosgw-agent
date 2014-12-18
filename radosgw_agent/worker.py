@@ -364,17 +364,17 @@ class DataWorkerFull(DataWorker):
             log.debug('bucket instance is "%s" with marker %s', instance, marker)
 
             objects = client.list_objects_in_bucket(self.src_conn, bucket)
-            if not objects:
-                return True
-        except Exception as e:
-            log.error('error preparing for full sync of bucket "%s": %s',
-                      bucket, e)
+            retries = self.sync_bucket(bucket, objects)
+
+            result = self.set_bound(instance, marker, retries, 'bucket-index')
+            return not retries and result == RESULT_SUCCESS
+        except client.BucketEmpty:
+            log.debug('no objects in bucket %s', bucket)
+            return True
+        except Exception:
+            log.exception('error preparing for full sync of bucket "%s"',
+                          bucket)
             return False
-
-        retries = self.sync_bucket(bucket, objects)
-
-        result = self.set_bound(instance, marker, retries, 'bucket-index')
-        return not retries and result == RESULT_SUCCESS
 
     def run(self):
         self.prepare_lock()

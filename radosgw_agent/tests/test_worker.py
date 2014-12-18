@@ -160,3 +160,14 @@ class TestSyncObject(object):
 
         exc_message = exc.exconly()
         assert 'state is error' in exc_message
+
+    def test_sync_bucket_delayed_not_found(self):
+        class fake_iterable(object):
+            def __iter__(self):
+                raise client.BucketEmpty
+        with patch('radosgw_agent.worker.client', self.client):
+            w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
+            w.sync_object = lambda *a: None
+            objects = fake_iterable()
+            with py.test.raises(client.BucketEmpty):
+                w.sync_bucket('foo', objects)
