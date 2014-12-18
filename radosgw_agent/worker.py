@@ -301,7 +301,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
             if entries:
                 marker = entries[-1].marker
             else:
-                marker = ''
+                marker = ' '
 
             if len(log_entries) < self.max_entries:
                 break
@@ -336,7 +336,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
             except client.NotFound:
                 log.debug('no worker bound found for bucket instance "%s"',
                           bucket_instance)
-                marker, timestamp, retries = '', DEFAULT_TIME, []
+                marker, timestamp, retries = ' ', DEFAULT_TIME, []
             try:
                 sync_result = self.inc_sync_bucket_instance(bucket_instance,
                                                             marker,
@@ -360,7 +360,7 @@ class DataWorkerFull(DataWorker):
                 marker = client.get_log_info(self.src_conn, 'bucket-index',
                                              instance)['max_marker']
             except client.NotFound:
-                marker = ''
+                marker = ' '
             log.debug('bucket instance is "%s" with marker %s', instance, marker)
 
             objects = client.list_objects_in_bucket(self.src_conn, bucket)
