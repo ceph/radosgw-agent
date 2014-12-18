@@ -147,7 +147,7 @@ def request(connection, type_, resource, params=None, headers=None,
     check_result_status(result)
 
     if data or not expect_json:
-        return result.raw
+        return result
 
     return json.loads(result.read())
 
