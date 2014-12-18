@@ -211,6 +211,8 @@ class DataWorker(Worker):
             if found:
                 client.remove_op_state(self.dest_conn, self.daemon_id,
                                        local_op_id, bucket, obj)
+        except client.NotFound:
+            log.debug('op state already gone')
         except Exception:
             log.exception('could not remove op state for daemon "%s" op_id %s',
                           self.daemon_id, local_op_id)
