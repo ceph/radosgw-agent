@@ -50,18 +50,13 @@ class TestSyncObject(object):
             with py.test.raises(worker.SyncFailed):
                 w.sync_object('mah-bucket', 'mah-object')
 
-    def test_syncs_encounters_a_transient_http_error(self):
+    def test_syncs_encounters_a_http_error(self):
         self.client.sync_object_intra_region = Mock(side_effect=client.HttpError(400, ''))
 
         with patch('radosgw_agent.worker.client', self.client):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             w.wait_for_object = lambda *a: None
-
-            with py.test.raises(worker.SyncFailed) as exc:
-                w.sync_object('mah-bucket', 'mah-object')
-
-            exc_message = exc.value[0]
-            assert 'HTTP error with status: 400' in exc_message
+            w.sync_object('mah-bucket', 'mah-object')
 
     def test_sync_client_raises_sync_failed(self):
         self.client.sync_object_intra_region = Mock(side_effect=worker.SyncFailed('failed intra region'))
@@ -74,19 +69,6 @@ class TestSyncObject(object):
 
             exc_message = exc.value[0]
             assert 'failed intra region' in exc_message
-
-    def test_syncs_encounters_a_critical_http_error(self):
-        self.client.sync_object_intra_region = Mock(side_effect=client.HttpError(500, 'Internal Server Error'))
-
-        with patch('radosgw_agent.worker.client', self.client):
-            w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
-            w.wait_for_object = lambda *a: None
-
-            with py.test.raises(worker.SyncFailed) as exc:
-                w.sync_object('mah-bucket', 'mah-object')
-
-            exc_message = exc.exconly()
-            assert 'HTTP error with status: 500' in exc_message
 
     def test_fails_to_remove_op_state(self, capsys):
         # really tricky to test this one, we are forced to just use `capsys` from py.test
@@ -113,18 +95,6 @@ class TestSyncObject(object):
         with patch('radosgw_agent.worker.client', self.client):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             w.wait_for_object = lambda *a: None
-            assert w.sync_object('mah-bucket', 'mah-object') is True
-
-    def test_fails_so_found_is_still_false(self):
-        self.client.sync_object_intra_region = Mock(side_effect=ValueError('severe error'))
-
-        with patch('radosgw_agent.worker.client', self.client):
-            w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
-
-            # we intersect this dude so that we know it should not be called
-            # by making it raise an exception if it does
-            msg = 'should not have called wait_for_object'
-            w.wait_for_object = Mock(side_effect=AssertionError(msg))
             assert w.sync_object('mah-bucket', 'mah-object') is True
 
     def test_wait_for_object_state_not_found_raises_sync_failed(self):

@@ -195,17 +195,12 @@ class DataWorker(Worker):
                 msg = 'could not delete "%s/%s" from secondary' % (bucket, obj)
                 log.exception(msg)
                 raise SyncFailed(msg)
-        except client.HttpError as e:
-            # if we have a non-critical Http error, raise a SyncFailed
-            # so that we can retry this. The Gateway may be returning 400's
-            msg = 'encountered an HTTP error with status: %s' % e.str_code
-            raise SyncFailed(msg)
         except SyncFailed:
             raise
         except Exception as e:
-            log.exception('encountered an exception during sync')
-            if found:
-                self.wait_for_object(bucket, obj, until, local_op_id)
+            log.warn('encountered an exception during sync', exc_info=True)
+            # wait for it if the op state is in-progress
+            self.wait_for_object(bucket, obj, until, local_op_id)
         # TODO: clean up old op states
         try:
             if found:
