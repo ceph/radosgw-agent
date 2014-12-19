@@ -1,6 +1,8 @@
 import boto
 import py.test
 from mock import Mock
+import httpretty
+import re
 
 from radosgw_agent import client
 
@@ -335,20 +337,20 @@ class TestCheckResultStatus(object):
     @py.test.mark.parametrize('code', http_invalid_status_codes())
     def test_check_raises_http_error(self, code):
         response = Mock()
-        response.status_code = code
+        response.status = code
         with py.test.raises(client.HttpError):
             client.check_result_status(response)
 
     @py.test.mark.parametrize('code', http_valid_status_codes())
     def test_check_does_not_raise_http_error(self, code):
         response = Mock()
-        response.status_code = code
+        response.status = code
         assert client.check_result_status(response) is None
 
 
     def test_check_raises_not_found(self):
         response = Mock()
-        response.status_code = 404
+        response.status = 404
         with py.test.raises(client.NotFound):
             client.check_result_status(response)
 
@@ -377,3 +379,181 @@ class TestBotoCall(object):
 
         with py.test.raises(ValueError):
             foo()
+
+
+class TestRequest(object):
+
+    @httpretty.activate
+    def test_url(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{}',
+            content_type="application/json",
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        client.request(connection, 'get', '/%7E~', _retries=0)
+        server_request = httpretty.last_request()
+        assert server_request.path == '/%257E%7E'
+
+    @httpretty.activate
+    def test_url_response(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{"msg": "ok"}',
+            content_type="application/json",
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        result = client.request(connection, 'get', '/%7E~', _retries=0)
+        assert result == {'msg': 'ok'}
+
+    @httpretty.activate
+    def test_url_bad(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{}',
+            content_type="application/json",
+            status=500,
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        with py.test.raises(client.HttpError):
+            client.request(connection, 'get', '/%7E~', _retries=0)
+
+
+class TestBotoCall(object):
+
+    def test_return_val(self):
+        @client.boto_call
+        def foo(*args, **kwargs):
+            return (args, kwargs)
+        assert foo(1) == ((1,), {})
+        assert foo(b=2) == (tuple(), {'b': 2})
+
+    def test_boto_exception_not_found(self):
+        @client.boto_call
+        def foo():
+            raise boto.exception.S3ResponseError(404, '')
+
+        with py.test.raises(client.NotFound):
+            foo()
+
+    def test_non_boto_exception(self):
+        @client.boto_call
+        def foo():
+            raise ValueError('')
+
+        with py.test.raises(ValueError):
+            foo()
+
+
+class TestGETClientRequests(object):
+
+    def setup(self):
+        self.connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+    def register(self):
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{}',
+            content_type="application/json",
+        )
+
+    @httpretty.activate
+    def test_get_metadata(self):
+        self.register()
+        client.get_metadata(self.connection, 'bucket.instance', 'foo')
+        server_request = httpretty.last_request()
+        assert server_request.path == '/admin/metadata/bucket.instance?key=foo'
+
+    @httpretty.activate
+    def test_get_metadata_no_re_encoding(self):
+        self.register()
+        #client.get_metadata(self.connection, 'bucket.instance', 'mybar%3Ar0z0.4140.1')
+        client.get_metadata(self.connection, 'bucket.instance', 'mybar:r0z0.4140.1')
+        server_request = httpretty.last_request()
+        assert server_request.path == '/admin/metadata/bucket.instance?key=mybar%3Ar0z0.4140.1'
+
+    @httpretty.activate
+    def test_get_metadata_sections(self):
+        self.register()
+        client.get_metadata_sections(self.connection)
+        server_request = httpretty.last_request()
+        assert server_request.path == '/admin/metadata'
+
+    @httpretty.activate
+    def test_list_metadata_keys(self):
+        self.register()
+        client.list_metadata_keys(self.connection, 'foo')
+        server_request = httpretty.last_request()
+        assert server_request.path == '/admin/metadata/foo'
+
+    @httpretty.activate
+    def test_get_bucket_list(self):
+        self.register()
+        client.get_bucket_list(self.connection)
+        server_request = httpretty.last_request()
+        assert server_request.path == '/admin/metadata/bucket'
+
+
+    @httpretty.activate
+    def test_url_response(self):
+
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body='{"msg": "ok"}',
+            content_type="application/json",
+        )
+        connection = client.S3Connection(
+            aws_access_key_id='key',
+            aws_secret_access_key='secret',
+            is_secure=False,
+            host='localhost',
+            port=8888,
+            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
+            debug=True,
+        )
+
+        result = client.request(connection, 'get', '/%7E~')
+        assert result == {'msg': 'ok'}

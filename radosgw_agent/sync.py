@@ -194,7 +194,7 @@ class IncrementalSyncer(Syncer):
                          shard_num, self.max_entries)
         except client.NotFound:
             # no entries past this marker yet, but we my have retries
-            last_marker = ''
+            last_marker = ' '
             log_entries = []
         return last_marker, log_entries
 
@@ -255,6 +255,8 @@ class DataSyncerFull(Syncer):
             # setting an empty marker returns an error
             if info['marker']:
                 self.shard_info[shard] = info['marker']
+            else:
+                self.shard_info[shard] = ' '
 
         # get list of buckets after getting any markers to avoid skipping
         # entries added before we got the marker info
@@ -298,6 +300,8 @@ class MetaSyncerFull(Syncer):
             # setting an empty marker returns an error
             if info['marker']:
                 self.shard_info[shard_num] = info['marker']
+            else:
+                self.shard_info[shard_num] = ' '
 
         self.metadata_by_shard = {}
         for section in self.sections:

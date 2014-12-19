@@ -244,7 +244,6 @@ def main():
         log_level = logging.WARN
     logging.basicConfig(level=log_level)
     logging.getLogger('boto').setLevel(lib_log_level)
-    logging.getLogger('requests').setLevel(lib_log_level)
 
     if args.log_file is not None:
         handler = logging.handlers.WatchedFileHandler(

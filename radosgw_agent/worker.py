@@ -195,22 +195,19 @@ class DataWorker(Worker):
                 msg = 'could not delete "%s/%s" from secondary' % (bucket, obj)
                 log.exception(msg)
                 raise SyncFailed(msg)
-        except client.HttpError as e:
-            # if we have a non-critical Http error, raise a SyncFailed
-            # so that we can retry this. The Gateway may be returning 400's
-            msg = 'encountered an HTTP error with status: %s' % e.str_code
-            raise SyncFailed(msg)
         except SyncFailed:
             raise
         except Exception as e:
-            log.exception('encountered an exception during sync')
-            if found:
-                self.wait_for_object(bucket, obj, until, local_op_id)
+            log.warn('encountered an exception during sync', exc_info=True)
+            # wait for it if the op state is in-progress
+            self.wait_for_object(bucket, obj, until, local_op_id)
         # TODO: clean up old op states
         try:
             if found:
                 client.remove_op_state(self.dest_conn, self.daemon_id,
                                        local_op_id, bucket, obj)
+        except client.NotFound:
+            log.debug('op state already gone')
         except Exception:
             log.exception('could not remove op state for daemon "%s" op_id %s',
                           self.daemon_id, local_op_id)
@@ -299,7 +296,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
             if entries:
                 marker = entries[-1].marker
             else:
-                marker = ''
+                marker = ' '
 
             if len(log_entries) < self.max_entries:
                 break
@@ -334,7 +331,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
             except client.NotFound:
                 log.debug('no worker bound found for bucket instance "%s"',
                           bucket_instance)
-                marker, timestamp, retries = '', DEFAULT_TIME, []
+                marker, timestamp, retries = ' ', DEFAULT_TIME, []
             try:
                 sync_result = self.inc_sync_bucket_instance(bucket_instance,
                                                             marker,
@@ -358,21 +355,21 @@ class DataWorkerFull(DataWorker):
                 marker = client.get_log_info(self.src_conn, 'bucket-index',
                                              instance)['max_marker']
             except client.NotFound:
-                marker = ''
+                marker = ' '
             log.debug('bucket instance is "%s" with marker %s', instance, marker)
 
             objects = client.list_objects_in_bucket(self.src_conn, bucket)
-            if not objects:
-                return True
-        except Exception as e:
-            log.error('error preparing for full sync of bucket "%s": %s',
-                      bucket, e)
+            retries = self.sync_bucket(bucket, objects)
+
+            result = self.set_bound(instance, marker, retries, 'bucket-index')
+            return not retries and result == RESULT_SUCCESS
+        except client.BucketEmpty:
+            log.debug('no objects in bucket %s', bucket)
+            return True
+        except Exception:
+            log.exception('error preparing for full sync of bucket "%s"',
+                          bucket)
             return False
-
-        retries = self.sync_bucket(bucket, objects)
-
-        result = self.set_bound(instance, marker, retries, 'bucket-index')
-        return not retries and result == RESULT_SUCCESS
 
     def run(self):
         self.prepare_lock()

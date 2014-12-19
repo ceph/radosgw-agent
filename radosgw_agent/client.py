@@ -3,11 +3,11 @@ import functools
 import json
 import logging
 import random
-import requests
 import urllib
 from urlparse import urlparse
 
-from boto.connection import AWSAuthConnection
+from radosgw_agent import request as aws_request
+from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
 
 log = logging.getLogger(__name__)
@@ -59,6 +59,8 @@ class InvalidZone(ClientException):
     pass
 class ZoneNotFound(ClientException):
     pass
+class BucketEmpty(ClientException):
+    pass
 
 def parse_endpoint(endpoint):
     url = urlparse(endpoint)
@@ -92,29 +94,10 @@ def boto_call(func):
     return translate_exception
 
 
-"""
-Adapted from the build_request() method of boto.connection
-"""
-
-def _build_request(conn, method, basepath='', resource = '', headers=None,
-                   data=None, special_first_param=None, params=None):
-    path = conn.calling_format.build_path_base(basepath, resource)
-    auth_path = conn.calling_format.build_auth_path(basepath, resource)
-    host = conn.calling_format.build_host(conn.server_name(), '')
-
-    if special_first_param:
-        path += '?' + special_first_param
-        boto.log.debug('path=%s' % path)
-        auth_path += '?' + special_first_param
-        boto.log.debug('auth_path=%s' % auth_path)
-
-    return AWSAuthConnection.build_base_http_request(
-        conn, method, path, auth_path, params, headers, data, host)
-
 def check_result_status(result):
-    if result.status_code / 100 != 2:
-        raise code_to_exc.get(result.status_code,
-                              HttpError)(result.status_code, result.content)
+    if result.status / 100 != 2:
+        raise code_to_exc.get(result.status,
+                              HttpError)(result.status, result.reason)
 def url_safe(component):
     if isinstance(component, basestring):
         string = component.encode('utf8')
@@ -123,7 +106,7 @@ def url_safe(component):
     return urllib.quote(string)
 
 def request(connection, type_, resource, params=None, headers=None,
-            data=None, expect_json=True, special_first_param=None):
+            data=None, expect_json=True, special_first_param=None, _retries=3):
     if headers is None:
         headers = {}
 
@@ -134,7 +117,7 @@ def request(connection, type_, resource, params=None, headers=None,
     if params is None:
         params = {}
     safe_params = dict([(k, url_safe(v)) for k, v in params.iteritems()])
-    request = _build_request(connection,
+    request = aws_request.base_http_request(connection,
                              type_.upper(),
                              resource=resource,
                              special_first_param=special_first_param,
@@ -148,20 +131,33 @@ def request(connection, type_, resource, params=None, headers=None,
 
     request.authorize(connection=connection)
 
-    handler = getattr(requests, type_)
     boto.log.debug('url = %r\nparams=%r\nheaders=%r\ndata=%r',
                    url, params, request.headers, data)
-    result = handler(url, params=params, headers=request.headers, data=data)
+    try:
+        result = aws_request.make_request(
+            connection,
+            type_.upper(),
+            resource=resource,
+            special_first_param=special_first_param,
+            headers=headers,
+            data=request_data,
+            params=safe_params,
+            _retries=_retries)
+    except BotoServerError as error:
+        check_result_status(error)
 
     check_result_status(result)
 
     if data or not expect_json:
-        return result.raw
-    return result.json()
+        return result
+
+    return json.loads(result.read())
+
 
 def get_metadata(connection, section, name):
     return request(connection, 'get', 'admin/metadata/' + section,
                    params=dict(key=name))
+
 
 def update_metadata(connection, section, name, metadata):
     if not isinstance(metadata, basestring):
@@ -169,15 +165,19 @@ def update_metadata(connection, section, name, metadata):
     return request(connection, 'put', 'admin/metadata/' + section,
                    params=dict(key=name), data=metadata)
 
+
 def delete_metadata(connection, section, name):
     return request(connection, 'delete', 'admin/metadata/' + section,
                    params=dict(key=name), expect_json=False)
 
+
 def get_metadata_sections(connection):
     return request(connection, 'get', 'admin/metadata')
 
+
 def list_metadata_keys(connection, section):
     return request(connection, 'get', 'admin/metadata/' + section)
+
 
 def get_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'get', 'admin/opstate',
@@ -187,6 +187,7 @@ def get_op_state(connection, client_id, op_id, bucket, obj):
                        'client-id': client_id,
                       }
                    )
+
 
 def remove_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'delete', 'admin/opstate',
@@ -201,17 +202,30 @@ def remove_op_state(connection, client_id, op_id, bucket, obj):
 def get_bucket_list(connection):
     return list_metadata_keys(connection, 'bucket')
 
+
 @boto_call
 def list_objects_in_bucket(connection, bucket_name):
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
-    for key in bucket.list():
-        yield key.name
+    try:
+        for key in bucket.list():
+            yield key.name
+    except boto.exception.S3ResponseError as e:
+        # since this is a generator, the exception will be raised when
+        # it's read, rather than when this call returns, so raise a
+        # unique exception to distinguish this from client errors from
+        # other calls
+        if e.status == 404:
+            raise BucketEmpty()
+        else:
+            raise
+
 
 @boto_call
 def delete_object(connection, bucket_name, object_name):
     bucket = connection.get_bucket(bucket_name)
     bucket.delete_key(object_name)
+
 
 def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
                              client_id, op_id):
@@ -230,6 +244,7 @@ def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
                        },
                    expect_json=False)
 
+
 def lock_shard(connection, lock_type, shard_num, zone_id, timeout, locker_id):
     return request(connection, 'post', 'admin/log',
                    params={
@@ -242,6 +257,7 @@ def lock_shard(connection, lock_type, shard_num, zone_id, timeout, locker_id):
                    special_first_param='lock',
                    expect_json=False)
 
+
 def unlock_shard(connection, lock_type, shard_num, zone_id, locker_id):
     return request(connection, 'post', 'admin/log',
                    params={
@@ -253,8 +269,10 @@ def unlock_shard(connection, lock_type, shard_num, zone_id, locker_id):
                    special_first_param='unlock',
                    expect_json=False)
 
+
 def _id_name(type_):
     return 'bucket-instance' if type_ == 'bucket-index' else 'id'
+
 
 def get_log(connection, log_type, marker, max_entries, id_):
     key = _id_name(log_type)
@@ -267,6 +285,7 @@ def get_log(connection, log_type, marker, max_entries, id_):
                        },
                    )
 
+
 def get_log_info(connection, log_type, id_):
     key = _id_name(log_type)
     return request(
@@ -278,9 +297,11 @@ def get_log_info(connection, log_type, id_):
         special_first_param='info',
         )
 
+
 def num_log_shards(connection, shard_type):
     out = request(connection, 'get', 'admin/log', dict(type=shard_type))
     return out['num_objects']
+
 
 def set_worker_bound(connection, type_, marker, timestamp,
                      daemon_id, id_, data=None):
@@ -301,6 +322,7 @@ def set_worker_bound(connection, type_, marker, timestamp,
         special_first_param='work_bound',
         )
 
+
 def del_worker_bound(connection, type_, daemon_id, id_):
     key = _id_name(type_)
     return request(
@@ -313,6 +335,7 @@ def del_worker_bound(connection, type_, daemon_id, id_):
         special_first_param='work_bound',
         expect_json=False,
         )
+
 
 def get_worker_bound(connection, type_, id_):
     key = _id_name(type_)
@@ -331,6 +354,7 @@ def get_worker_bound(connection, type_, id_):
         retries = retries.union(names)
     return out['marker'], out['oldest_time'], retries
 
+
 class Zone(object):
     def __init__(self, zone_info):
         self.name = zone_info['name']
@@ -344,6 +368,7 @@ class Zone(object):
 
     def __str__(self):
         return self.name
+
 
 class Region(object):
     def __init__(self, region_info):
@@ -364,6 +389,7 @@ class Region(object):
 
     def __str__(self):
         return str(self.zones.keys())
+
 
 class RegionMap(object):
     def __init__(self, region_map):
@@ -389,13 +415,16 @@ class RegionMap(object):
                     return region, zone
         raise ZoneNotFound('%s not found in region map' % endpoint)
 
+
 def get_region_map(connection):
     region_map = request(connection, 'get', 'admin/config')
     return RegionMap(region_map)
 
+
 def _validate_sync_dest(dest_region, dest_zone):
     if dest_region.is_master and dest_zone.is_master:
         raise InvalidZone('destination cannot be master zone of master region')
+
 
 def _validate_sync_source(src_region, src_zone, dest_region, dest_zone,
                           meta_only):
