@@ -392,14 +392,9 @@ class TestRequest(object):
             body='{}',
             content_type="application/json",
         )
-        connection = client.S3Connection(
-            aws_access_key_id='key',
-            aws_secret_access_key='secret',
-            is_secure=False,
-            host='localhost',
-            port=8888,
-            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
-            debug=True,
+        connection = client.connection(
+            client.Endpoint('localhost', 8888, False, 'key', 'secret'),
+            True,
         )
 
         client.request(connection, 'get', '/%7E~', _retries=0)
@@ -415,14 +410,9 @@ class TestRequest(object):
             body='{"msg": "ok"}',
             content_type="application/json",
         )
-        connection = client.S3Connection(
-            aws_access_key_id='key',
-            aws_secret_access_key='secret',
-            is_secure=False,
-            host='localhost',
-            port=8888,
-            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
-            debug=True,
+        connection = client.connection(
+            client.Endpoint('localhost', 8888, False, 'key', 'secret'),
+            True,
         )
 
         result = client.request(connection, 'get', '/%7E~', _retries=0)
@@ -438,14 +428,9 @@ class TestRequest(object):
             content_type="application/json",
             status=500,
         )
-        connection = client.S3Connection(
-            aws_access_key_id='key',
-            aws_secret_access_key='secret',
-            is_secure=False,
-            host='localhost',
-            port=8888,
-            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
-            debug=True,
+        connection = client.connection(
+            client.Endpoint('localhost', 8888, False, 'key', 'secret'),
+            True,
         )
 
         with py.test.raises(client.HttpError):
@@ -481,14 +466,9 @@ class TestBotoCall(object):
 class TestGETClientRequests(object):
 
     def setup(self):
-        self.connection = client.S3Connection(
-            aws_access_key_id='key',
-            aws_secret_access_key='secret',
-            is_secure=False,
-            host='localhost',
-            port=8888,
-            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
-            debug=True,
+        self.connection = client.connection(
+            client.Endpoint('localhost', 8888, False, 'key', 'secret'),
+            True,
         )
 
     def register(self):
@@ -545,15 +525,5 @@ class TestGETClientRequests(object):
             body='{"msg": "ok"}',
             content_type="application/json",
         )
-        connection = client.S3Connection(
-            aws_access_key_id='key',
-            aws_secret_access_key='secret',
-            is_secure=False,
-            host='localhost',
-            port=8888,
-            calling_format=client.boto.s3.connection.OrdinaryCallingFormat(),
-            debug=True,
-        )
-
-        result = client.request(connection, 'get', '/%7E~')
+        result = client.request(self.connection, 'get', '/%7E~')
         assert result == {'msg': 'ok'}
