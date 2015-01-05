@@ -117,7 +117,8 @@ def request(connection, type_, resource, params=None, headers=None,
     if params is None:
         params = {}
     safe_params = dict([(k, url_safe(v)) for k, v in params.iteritems()])
-    request = aws_request.base_http_request(connection,
+    connection.count_request()
+    request = aws_request.base_http_request(connection.s3_connection,
                              type_.upper(),
                              resource=resource,
                              special_first_param=special_first_param,
@@ -135,7 +136,7 @@ def request(connection, type_, resource, params=None, headers=None,
                    url, params, request.headers, data)
     try:
         result = aws_request.make_request(
-            connection,
+            connection.s3_connection,
             type_.upper(),
             resource=resource,
             special_first_param=special_first_param,
@@ -480,13 +481,33 @@ def configure_endpoints(region_map, dest_endpoint, src_endpoint, meta_only):
     src_endpoint.region = src_region
     src_endpoint.zone = src_zone
 
-def connection(endpoint, debug=None):
-    return S3Connection(
-        aws_access_key_id=endpoint.access_key,
-        aws_secret_access_key=endpoint.secret_key,
-        is_secure=endpoint.secure,
-        host=endpoint.host,
-        port=endpoint.port,
-        calling_format=boto.s3.connection.OrdinaryCallingFormat(),
-        debug=debug,
+class S3ConnectionWrapper(object):
+    def __init__(self, endpoint, debug):
+        self.endpoint = endpoint
+        self.debug = debug
+        self.s3_connection = None
+        self.reqs_before_reset = 512
+        self._recreate_s3_connection()
+
+    def count_request(self):
+        self.num_requests += 1
+        if self.num_requests > self.reqs_before_reset:
+            self._recreate_s3_connection()
+
+    def _recreate_s3_connection(self):
+        self.num_requests = 0
+        self.s3_connection = S3Connection(
+            aws_access_key_id=self.endpoint.access_key,
+            aws_secret_access_key=self.endpoint.secret_key,
+            is_secure=self.endpoint.secure,
+            host=self.endpoint.host,
+            port=self.endpoint.port,
+            calling_format=boto.s3.connection.OrdinaryCallingFormat(),
+            debug=self.debug,
         )
+
+    def __getattr__(self, attrib):
+        return getattr(self.s3_connection, attrib)
+
+def connection(endpoint, debug=None):
+    return S3ConnectionWrapper(endpoint, debug)
