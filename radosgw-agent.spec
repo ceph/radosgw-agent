@@ -1,31 +1,25 @@
-%define name radosgw-agent
-%define version 1.2
-%define unmangled_version 1.2
-%define unmangled_version 1.2
-%define release 0
-
 Summary: Synchronize users and data between radosgw clusters
-Name: %{name}
-Version: %{version}
-Release: %{release}
-Source0: %{name}-%{unmangled_version}.tar.gz
+Name: radosgw-agent
+Version: 1.2
+Release: 0
+Source0: https://pypi.python.org/packages/source/r/%{name}/%{name}-%{version}.tar.gz
 License: MIT
 Group: Development/Libraries
-BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
-Prefix: %{_prefix}
 BuildArch: noarch
-Vendor: Josh Durgin <josh.durgin@inktank.com>
 Requires: python-argparse
 Requires: PyYAML
 Requires: python-boto >= 2.2.2
 Requires: python-boto < 3.0.0
-Url: https://github.com/ceph/radosgw-agent
+BuildRequires: python-devel
+BuildRequires: python-setuptools
+URL: https://github.com/ceph/radosgw-agent
 
 %description
-UNKNOWN
+The Ceph RADOS Gateway agent replicates the data of a master zone to a
+secondary zone.
 
 %prep
-%setup -n %{name}-%{unmangled_version} -n %{name}-%{unmangled_version}
+%setup -q
 
 %build
 python setup.py build
@@ -39,11 +33,7 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/ceph/radosgw-agent
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/log/ceph/radosgw-agent
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/run/ceph/radosgw-agent
 
-%clean
-rm -rf $RPM_BUILD_ROOT
-
 %files
-%defattr(-,root,root)
 %doc LICENSE
 %dir %{_sysconfdir}/ceph/radosgw-agent
 %dir %{_localstatedir}/log/ceph/radosgw-agent
