@@ -14,7 +14,7 @@ setup(
     packages=find_packages(),
 
     author='Josh Durgin',
-    author_email='josh.durgin@inktank.com',
+    author_email='jdurgin@redhat.com',
     description='Synchronize users and data between radosgw clusters',
     license='MIT',
     keywords='radosgw ceph radosgw-agent',
