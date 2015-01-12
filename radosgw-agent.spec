@@ -17,7 +17,7 @@ The Ceph RADOS Gateway agent replicates the data of a master zone to a
 secondary zone.
 
 %prep
-%setup -n %{name}-%{version} -n %{name}-%{version}
+%setup -q
 
 %build
 python setup.py build
