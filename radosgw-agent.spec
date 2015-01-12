@@ -1,8 +1,8 @@
 %define name radosgw-agent
-%define version 1.1
-%define unmangled_version 1.1
-%define unmangled_version 1.1
-%define release 1
+%define version 1.2
+%define unmangled_version 1.2
+%define unmangled_version 1.2
+%define release 0
 
 Summary: Synchronize users and data between radosgw clusters
 Name: %{name}
