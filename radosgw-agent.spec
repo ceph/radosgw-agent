@@ -31,9 +31,6 @@ mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/ceph/radosgw-agent
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/log/ceph/radosgw-agent
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/run/ceph/radosgw-agent
 
-%clean
-rm -rf $RPM_BUILD_ROOT
-
 %files
 %defattr(-,root,root)
 %doc LICENSE
