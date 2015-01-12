@@ -2,7 +2,7 @@ Summary: Synchronize users and data between radosgw clusters
 Name: radosgw-agent
 Version: 1.2
 Release: 0
-Source0: %{name}-%{version}.tar.gz
+Source0: https://pypi.python.org/packages/source/r/%{name}/%{name}-%{version}.tar.gz
 License: MIT
 Group: Development/Libraries
 BuildArch: noarch
