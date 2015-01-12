@@ -1,14 +1,8 @@
-%define name radosgw-agent
-%define version 1.2
-%define unmangled_version 1.2
-%define unmangled_version 1.2
-%define release 0
-
 Summary: Synchronize users and data between radosgw clusters
-Name: %{name}
-Version: %{version}
-Release: %{release}
-Source0: %{name}-%{unmangled_version}.tar.gz
+Name: radosgw-agent
+Version: 1.2
+Release: 0
+Source0: %{name}-%{version}.tar.gz
 License: MIT
 Group: Development/Libraries
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
@@ -25,7 +19,7 @@ Url: https://github.com/ceph/radosgw-agent
 UNKNOWN
 
 %prep
-%setup -n %{name}-%{unmangled_version} -n %{name}-%{unmangled_version}
+%setup -n %{name}-%{version} -n %{name}-%{version}
 
 %build
 python setup.py build
