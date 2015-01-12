@@ -13,7 +13,8 @@ Requires: python-boto < 3.0.0
 URL: https://github.com/ceph/radosgw-agent
 
 %description
-UNKNOWN
+The Ceph RADOS Gateway agent replicates the data of a master zone to a
+secondary zone.
 
 %prep
 %setup -n %{name}-%{version} -n %{name}-%{version}
