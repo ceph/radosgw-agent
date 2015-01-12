@@ -5,10 +5,7 @@ Release: 0
 Source0: %{name}-%{version}.tar.gz
 License: MIT
 Group: Development/Libraries
-BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-buildroot
-Prefix: %{_prefix}
 BuildArch: noarch
-Vendor: Josh Durgin <josh.durgin@inktank.com>
 Requires: python-argparse
 Requires: PyYAML
 Requires: python-boto >= 2.2.2
