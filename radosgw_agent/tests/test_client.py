@@ -463,7 +463,7 @@ class TestBotoCall(object):
             foo()
 
 
-class TestGETClientRequests(object):
+class TestGETClientRequestsPaths(object):
 
     def setup(self):
         self.connection = client.connection(
@@ -471,11 +471,12 @@ class TestGETClientRequests(object):
             True,
         )
 
-    def register(self):
+    def register(self, body=None):
+        body = body or '{}'
         httpretty.register_uri(
             httpretty.GET,
             re.compile("http://localhost:8888/(.*)"),
-            body='{}',
+            body=body,
             content_type="application/json",
         )
 
@@ -489,7 +490,6 @@ class TestGETClientRequests(object):
     @httpretty.activate
     def test_get_metadata_no_re_encoding(self):
         self.register()
-        #client.get_metadata(self.connection, 'bucket.instance', 'mybar%3Ar0z0.4140.1')
         client.get_metadata(self.connection, 'bucket.instance', 'mybar:r0z0.4140.1')
         server_request = httpretty.last_request()
         assert server_request.path == '/admin/metadata/bucket.instance?key=mybar%3Ar0z0.4140.1'
@@ -515,7 +515,6 @@ class TestGETClientRequests(object):
         server_request = httpretty.last_request()
         assert server_request.path == '/admin/metadata/bucket'
 
-
     @httpretty.activate
     def test_url_response(self):
 
@@ -527,3 +526,58 @@ class TestGETClientRequests(object):
         )
         result = client.request(self.connection, 'get', '/%7E~')
         assert result == {'msg': 'ok'}
+
+
+class TestClientListObjectsInBucket(object):
+
+    def setup(self):
+        self.connection = client.connection(
+            client.Endpoint('localhost', 8888, False, 'key', 'secret'),
+            True,
+        )
+        self.body = """
+        [
+            {
+                "name": "mahobject/",
+                "etag": "d41d8cd98f00b204e9800998ecf8427e",
+                "content_type": "application/octet-stream",
+                "last_modified": "2015-01-15T15:24:42.000Z",
+                "storage_class": "STANDARD",
+                "owner": {
+                    "display_name": "client1-system-user",
+                    "id": "client1-system-user"
+                }
+            }
+        ]
+        """
+
+    def register(self, body=None):
+        body = body or self.body
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body=body,
+            content_type="application/json",
+        )
+
+    @httpretty.activate
+    def test_get_bucket_is_a_single_item(self):
+        self.register()
+        result = client.get_bucket_list(self.connection)
+        assert len(result) == 1
+
+    @httpretty.activate
+    def test_get_bucket_has_right_metadata(self):
+        self.register()
+        result = client.get_bucket_list(self.connection)
+        obj = result[0]
+        owner = {
+            "display_name": "client1-system-user",
+            "id": "client1-system-user"
+        }
+        assert obj['name'] == 'mahobject/'
+        assert obj['etag'] == 'd41d8cd98f00b204e9800998ecf8427e'
+        assert obj['content_type'] == 'application/octet-stream'
+        assert obj['last_modified'] == '2015-01-15T15:24:42.000Z'
+        assert obj['storage_class'] == 'STANDARD'
+        assert obj['owner'] == owner
