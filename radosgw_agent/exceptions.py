@@ -40,3 +40,19 @@ class HttpError(ClientException):
 
 class NotFound(HttpError):
     pass
+
+
+class SkipShard(Exception):
+    pass
+
+
+class SyncError(Exception):
+    pass
+
+
+class SyncTimedOut(SyncError):
+    pass
+
+
+class SyncFailed(SyncError):
+    pass
