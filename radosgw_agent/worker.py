@@ -7,21 +7,12 @@ import time
 
 from radosgw_agent import client
 from radosgw_agent import lock
+from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed
 
 log = logging.getLogger(__name__)
 
 RESULT_SUCCESS = 0
 RESULT_ERROR = 1
-
-class SkipShard(Exception):
-    pass
-
-class SyncError(Exception):
-    pass
-class SyncTimedOut(SyncError):
-    pass
-class SyncFailed(SyncError):
-    pass
 
 DEFAULT_TIME = '1970-01-01 00:00:00'
 

@@ -6,11 +6,14 @@ import random
 import urllib
 from urlparse import urlparse
 
-from radosgw_agent import request as aws_request
 from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
 
+from radosgw_agent import request as aws_request
+from radosgw_agent import exceptions as exc
+
 log = logging.getLogger(__name__)
+
 
 class Endpoint(object):
     def __init__(self, host, port, secure,
@@ -32,6 +35,7 @@ class Endpoint(object):
         # if self and other are mixed http/https with default ports,
         # i.e. http://example.com and https://example.com, consider
         # them the same
+
         def diff_only_default_ports(a, b):
             return a.secure and a.port == 443 and not b.secure and b.port == 80
         return (diff_only_default_ports(self, other) or
@@ -49,40 +53,19 @@ class Endpoint(object):
                                                  host=self.host,
                                                  port=self.port)
 
-class ClientException(Exception):
-    pass
-class InvalidProtocol(ClientException):
-    pass
-class InvalidHost(ClientException):
-    pass
-class InvalidZone(ClientException):
-    pass
-class ZoneNotFound(ClientException):
-    pass
-class BucketEmpty(ClientException):
-    pass
 
 def parse_endpoint(endpoint):
     url = urlparse(endpoint)
     if url.scheme not in ['http', 'https']:
-        raise InvalidProtocol('invalid protocol %r' % url.scheme)
+        raise exc.InvalidProtocol('invalid protocol %r' % url.scheme)
     if not url.hostname:
-        raise InvalidHost('no hostname in %r' % endpoint)
+        raise exc.InvalidHost('no hostname in %r' % endpoint)
     return Endpoint(url.hostname, url.port, url.scheme == 'https')
 
-class HttpError(ClientException):
-    def __init__(self, code, body):
-        self.code = code
-        self.str_code = str(code)
-        self.body = body
-        self.message = 'Http error code %s content %s' % (code, body)
-    def __str__(self):
-        return self.message
-class NotFound(HttpError):
-    pass
 code_to_exc = {
-    404: NotFound,
+    404: exc.NotFound,
     }
+
 
 def boto_call(func):
     @functools.wraps(func)
@@ -90,20 +73,23 @@ def boto_call(func):
         try:
             return func(*args, **kwargs)
         except boto.exception.S3ResponseError as e:
-            raise code_to_exc.get(e.status, HttpError)(e.status, e.body)
+            raise code_to_exc.get(e.status, exc.HttpError)(e.status, e.body)
     return translate_exception
 
 
 def check_result_status(result):
     if result.status / 100 != 2:
         raise code_to_exc.get(result.status,
-                              HttpError)(result.status, result.reason)
+                              exc.HttpError)(result.status, result.reason)
+
+
 def url_safe(component):
     if isinstance(component, basestring):
         string = component.encode('utf8')
     else:
         string = str(component)
     return urllib.quote(string)
+
 
 def request(connection, type_, resource, params=None, headers=None,
             data=None, expect_json=True, special_first_param=None, _retries=3):
@@ -200,6 +186,7 @@ def remove_op_state(connection, client_id, op_id, bucket, obj):
                    expect_json=False,
                    )
 
+
 def get_bucket_list(connection):
     return list_metadata_keys(connection, 'bucket')
 
@@ -217,7 +204,7 @@ def list_objects_in_bucket(connection, bucket_name):
         # unique exception to distinguish this from client errors from
         # other calls
         if e.status == 404:
-            raise BucketEmpty()
+            raise exc.BucketEmpty()
         else:
             raise
 
@@ -414,7 +401,7 @@ class RegionMap(object):
             for zone in region.zones.itervalues():
                 if endpoint in zone.endpoints or endpoint.zone == zone.name:
                     return region, zone
-        raise ZoneNotFound('%s not found in region map' % endpoint)
+        raise exc.ZoneNotFound('%s not found in region map' % endpoint)
 
 
 def get_region_map(connection):
@@ -424,24 +411,25 @@ def get_region_map(connection):
 
 def _validate_sync_dest(dest_region, dest_zone):
     if dest_region.is_master and dest_zone.is_master:
-        raise InvalidZone('destination cannot be master zone of master region')
+        raise exc.InvalidZone('destination cannot be master zone of master region')
 
 
 def _validate_sync_source(src_region, src_zone, dest_region, dest_zone,
                           meta_only):
     if not src_zone.is_master:
-        raise InvalidZone('source zone %s must be a master zone' % src_zone.name)
+        raise exc.InvalidZone('source zone %s must be a master zone' % src_zone.name)
     if (src_region.name == dest_region.name and
         src_zone.name == dest_zone.name):
-        raise InvalidZone('source and destination must be different zones')
+        raise exc.InvalidZone('source and destination must be different zones')
     if not src_zone.log_meta:
-        raise InvalidZone('source zone %s must have metadata logging enabled' % src_zone.name)
+        raise exc.InvalidZone('source zone %s must have metadata logging enabled' % src_zone.name)
     if not meta_only and not src_zone.log_data:
-        raise InvalidZone('source zone %s must have data logging enabled' % src_zone.name)
+        raise exc.InvalidZone('source zone %s must have data logging enabled' % src_zone.name)
     if not meta_only and src_region.name != dest_region.name:
-        raise InvalidZone('data sync can only occur between zones in the same region')
+        raise exc.InvalidZone('data sync can only occur between zones in the same region')
     if not src_zone.endpoints:
-        raise InvalidZone('region map contains no endpoints for default source zone %s' % src_zone.name)
+        raise exc.InvalidZone('region map contains no endpoints for default source zone %s' % src_zone.name)
+
 
 def configure_endpoints(region_map, dest_endpoint, src_endpoint, meta_only):
     print('region map is: %r' % region_map)
@@ -459,7 +447,7 @@ def configure_endpoints(region_map, dest_endpoint, src_endpoint, meta_only):
             _validate_sync_source(dest_region, dest_region.master_zone,
                                   dest_region, dest_zone, meta_only)
             src_region, src_zone = dest_region, dest_region.master_zone
-        except InvalidZone as e:
+        except exc.InvalidZone as e:
             log.debug('source region %s zone %s unaccetpable: %s',
                       dest_region.name, dest_region.master_zone.name, e)
             master_region = region_map.master_region
@@ -480,6 +468,7 @@ def configure_endpoints(region_map, dest_endpoint, src_endpoint, meta_only):
     dest_endpoint.zone = dest_zone
     src_endpoint.region = src_region
     src_endpoint.zone = src_zone
+
 
 class S3ConnectionWrapper(object):
     def __init__(self, endpoint, debug):
@@ -508,6 +497,7 @@ class S3ConnectionWrapper(object):
 
     def __getattr__(self, attrib):
         return getattr(self.s3_connection, attrib)
+
 
 def connection(endpoint, debug=None):
     return S3ConnectionWrapper(endpoint, debug)

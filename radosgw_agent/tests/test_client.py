@@ -5,6 +5,7 @@ import httpretty
 import re
 
 from radosgw_agent import client
+from radosgw_agent import exceptions as exc
 
 # parametrization helpers
 
@@ -209,9 +210,9 @@ def test_parse_repr(url, host, port, secure):
 
 
 def test_parse_endpoint_bad_input():
-    with py.test.raises(client.InvalidProtocol):
+    with py.test.raises(exc.InvalidProtocol):
         client.parse_endpoint('ftp://example.com')
-    with py.test.raises(client.InvalidHost):
+    with py.test.raises(exc.InvalidHost):
         client.parse_endpoint('http://:80/')
 
 def _test_configure_endpoints(dest_url, dest_region, dest_zone,
@@ -237,7 +238,7 @@ def test_configure_endpoints_2nd_region_master_zone_meta():
                               meta_only=True)
 
 def test_configure_endpoints_2nd_region_master_zone_data():
-    with py.test.raises(client.InvalidZone):
+    with py.test.raises(exc.InvalidZone):
         _test_configure_endpoints('http://vit:8000', 'swab', 'swab-1',
                                   'http://vit:8001', 'skinny', 'skinny-1',
                                   meta_only=False)
@@ -256,7 +257,7 @@ def test_configure_endpoints_2nd_region_readonly_meta():
                               meta_only=True)
 
 def test_configure_endpoints_2nd_region_readonly_data():
-    with py.test.raises(client.InvalidZone):
+    with py.test.raises(exc.InvalidZone):
         _test_configure_endpoints('http://ro:8080', 'readonly', 'ro-2',
                                   'http://vit:8001', 'skinny', 'skinny-1',
                                   meta_only=False)
@@ -267,13 +268,13 @@ def test_configure_endpoints_2nd_region_metaonly_meta():
                               meta_only=True)
 
 def test_configure_endpoints_2nd_region_metaonly_data():
-    with py.test.raises(client.InvalidZone):
+    with py.test.raises(exc.InvalidZone):
         _test_configure_endpoints('http://meta:8080', 'metaonly', 'meta-2',
                                   'http://vit:8001', 'skinny', 'skinny-1',
                                   meta_only=False)
 
 def test_configure_endpoints_master_region_master_zone():
-    with py.test.raises(client.InvalidZone):
+    with py.test.raises(exc.InvalidZone):
         _test_configure_endpoints('http://vit:8001', 'skinny', 'skinny-1',
                                   'http://vit:8001', 'skinny', 'skinny-1')
 
@@ -288,37 +289,37 @@ def test_configure_endpoints_specified_src_master_region_meta():
                               'http://vit:8001', meta_only=True)
 
 def test_configure_endpoints_specified_src_master_region_data():
-    with py.test.raises(client.InvalidZone):
+    with py.test.raises(exc.InvalidZone):
         _test_configure_endpoints('http://vit:8003', 'swab', 'swab-2',
                                   'http://vit:8001', 'skinny', 'skinny-1',
                                   'http://vit:8001', meta_only=False)
 
 def test_configure_endpoints_bad_src_same_region():
-    with py.test.raises(client.InvalidZone):
+    with py.test.raises(exc.InvalidZone):
         _test_configure_endpoints('http://vit:8003', 'swab', 'swab-2',
                                   'http://vit:8004', 'swab', 'swab-3',
                                   'http://vit:8004')
 
 def test_configure_endpoints_bad_src_master_region():
-    with py.test.raises(client.InvalidZone):
+    with py.test.raises(exc.InvalidZone):
         _test_configure_endpoints('http://vit:8003', 'swab', 'swab-2',
                                   'http://vit:8002', 'skinny', 'skinny-2',
                                   'http://vit:8002')
 
 def test_configure_endpoints_bad_src_same_zone():
-    with py.test.raises(client.InvalidZone):
+    with py.test.raises(exc.InvalidZone):
         _test_configure_endpoints('http://vit:8000', 'swab', 'swab-1',
                                   'http://vit:8000', 'swab', 'swab-1',
                                   'http://vit:8000')
 
 def test_configure_endpoints_specified_nonexistent_src():
-    with py.test.raises(client.ZoneNotFound):
+    with py.test.raises(exc.ZoneNotFound):
         _test_configure_endpoints('http://vit:8005', 'skinny', 'skinny-1',
                                   'http://vit:8001', 'skinny', 'skinny-1',
                                   'http://vit:80')
 
 def test_configure_endpoints_unknown_zone():
-    with py.test.raises(client.ZoneNotFound):
+    with py.test.raises(exc.ZoneNotFound):
         _test_configure_endpoints('http://vit:8005', 'skinny', 'skinny-1',
                                   'http://vit:8001', 'skinny', 'skinny-1')
 
@@ -338,7 +339,7 @@ class TestCheckResultStatus(object):
     def test_check_raises_http_error(self, code):
         response = Mock()
         response.status = code
-        with py.test.raises(client.HttpError):
+        with py.test.raises(exc.HttpError):
             client.check_result_status(response)
 
     @py.test.mark.parametrize('code', http_valid_status_codes())
@@ -351,7 +352,7 @@ class TestCheckResultStatus(object):
     def test_check_raises_not_found(self):
         response = Mock()
         response.status = 404
-        with py.test.raises(client.NotFound):
+        with py.test.raises(exc.NotFound):
             client.check_result_status(response)
 
 
@@ -369,7 +370,7 @@ class TestBotoCall(object):
         def foo():
             raise boto.exception.S3ResponseError(404, '')
 
-        with py.test.raises(client.NotFound):
+        with py.test.raises(exc.NotFound):
             foo()
 
     def test_non_boto_exception(self):
@@ -433,7 +434,7 @@ class TestRequest(object):
             True,
         )
 
-        with py.test.raises(client.HttpError):
+        with py.test.raises(exc.HttpError):
             client.request(connection, 'get', '/%7E~', _retries=0)
 
 
@@ -451,7 +452,7 @@ class TestBotoCall(object):
         def foo():
             raise boto.exception.S3ResponseError(404, '')
 
-        with py.test.raises(client.NotFound):
+        with py.test.raises(exc.NotFound):
             foo()
 
     def test_non_boto_exception(self):
