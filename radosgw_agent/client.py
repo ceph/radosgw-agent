@@ -347,7 +347,8 @@ def get_worker_bound(connection, type_, id_):
     except exc.NotFound:
         log.debug('no worker bound found for bucket instance "%s"',
                   id_)
-        # return fallback, default values
+        # if no worker bounds have been set, start from the beginning
+        # returning fallback, default values
         return dict(
             marker=' ',
             oldest_time=DEFAULT_TIME,
