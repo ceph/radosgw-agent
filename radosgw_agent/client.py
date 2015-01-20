@@ -350,7 +350,7 @@ def get_worker_bound(connection, type_, id_):
         # return fallback, default values
         return dict(
             marker=' ',
-            timestamp=DEFAULT_TIME,
+            oldest_time=DEFAULT_TIME,
             retries=[]
         )
 
