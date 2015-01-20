@@ -4,6 +4,8 @@ import time
 
 from radosgw_agent import worker
 from radosgw_agent import client
+from radosgw_agent.exceptions import NotFound, HttpError
+
 
 log = logging.getLogger(__name__)
 
@@ -177,7 +179,7 @@ class IncrementalSyncer(Syncer):
             log.debug('oldest marker and time for shard %d are: %r %r',
                       shard_num, marker, timestamp)
             log.debug('%d items to retrie are: %r', len(retries), retries)
-        except client.NotFound:
+        except NotFound:
             # if no worker bounds have been set, start from the beginning
             marker, retries = '', []
         return marker, retries
@@ -192,7 +194,7 @@ class IncrementalSyncer(Syncer):
             if len(log_entries) == self.max_entries:
                 log.warn('shard %d log has fallen behind - log length >= %d',
                          shard_num, self.max_entries)
-        except client.NotFound:
+        except NotFound:
             # no entries past this marker yet, but we my have retries
             last_marker = ' '
             log_entries = []
@@ -288,7 +290,7 @@ class MetaSyncerFull(Syncer):
     def prepare(self):
         try:
             self.sections = client.get_metadata_sections(self.src_conn)
-        except client.HttpError as e:
+        except HttpError as e:
             log.error('Error listing metadata sections: %s', e)
             raise
 
@@ -310,10 +312,10 @@ class MetaSyncerFull(Syncer):
                     shard = self.shard_num_for_key(section + ':' + key)
                     self.metadata_by_shard.setdefault(shard, [])
                     self.metadata_by_shard[shard].append((section, key))
-            except client.NotFound:
+            except NotFound:
                 # no keys of this type exist
                 continue
-            except client.HttpError as e:
+            except HttpError as e:
                 log.error('Error listing metadata for section %s: %s',
                           section, e)
                 raise
