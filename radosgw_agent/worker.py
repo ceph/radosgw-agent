@@ -311,15 +311,15 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
 
         new_retries = []
         for bucket_instance in bucket_instances.union(retries):
-            try:
-                marker, timestamp, retries = client.get_worker_bound(
-                    self.dest_conn,
-                    'bucket-index',
-                    bucket_instance)
-            except NotFound:
-                log.debug('no worker bound found for bucket instance "%s"',
-                          bucket_instance)
-                marker, timestamp, retries = ' ', DEFAULT_TIME, []
+            bound = client.get_worker_bound(
+                self.dest_conn,
+                'bucket-index',
+                bucket_instance)
+
+            marker = bound['marker']
+            retries = bound['retries']
+            timestamp = bound['oldest_time']
+
             try:
                 sync_result = self.inc_sync_bucket_instance(bucket_instance,
                                                             marker,
