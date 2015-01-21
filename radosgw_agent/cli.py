@@ -116,6 +116,11 @@ def parse_args():
         help='sync bucket and user metadata, but not bucket contents',
         )
     parser.add_argument(
+        '--versioned',
+        action='store_true',
+        help='indicates that radosgw endpoints have object versioning enabled',
+        )
+    parser.add_argument(
         '--num-workers',
         default=1,
         type=check_positive_int,
