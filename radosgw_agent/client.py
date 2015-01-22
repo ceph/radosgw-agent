@@ -217,12 +217,15 @@ def delete_object(connection, bucket_name, object_name):
     bucket.delete_key(object_name)
 
 
-def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
-                             client_id, op_id, version_id=None,
-                             versioned_epoch=None):
+def sync_object_intra_region(connection, bucket_name, obj, src_zone,
+                             client_id, op_id):
+
+    version_id = obj.version_id
+    versioned_epoch = obj.VersionedEpoch
+
     path = u'{bucket}/{object}'.format(
         bucket=bucket_name,
-        object=object_name,
+        object=obj.name,
         )
 
     params = {
