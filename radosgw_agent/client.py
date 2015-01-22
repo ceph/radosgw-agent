@@ -199,21 +199,13 @@ def get_bucket_list(connection):
 
 
 @boto_call
-def list_objects_in_bucket(connection, bucket_name):
+def list_objects_in_bucket(connection, bucket_name, versioned=False):
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
+    list_call = bucket.list_versions if versioned else bucket.list
     try:
-        # try to list all available versions regardless if the current gateway
-        # doesn't support them
-        try:
-            for key in bucket.list_versions():
-                yield key.name
-        except boto.exception.S3ResponseError as e:
-            if e.status == 403:
-                for key in bucket.list():
-                    yield key.name
-            else:
-                raise
+        for key in list_call():
+            yield key
     except boto.exception.S3ResponseError as e:
         # since this is a generator, the exception will be raised when
         # it's read, rather than when this call returns, so raise a
