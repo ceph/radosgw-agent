@@ -585,7 +585,6 @@ class TestClientListObjectsInBucket(object):
         assert obj['owner'] == owner
 
 
-
 class TestClientGetWorkerBound(object):
 
     def setup(self):
@@ -645,3 +644,29 @@ class TestClientGetWorkerBound(object):
         assert result['marker'] == " "
         assert result['retries'] == []
         assert result['oldest_time'] == DEFAULT_TIME
+
+
+class TestIsVersioned(object):
+
+    def setup(self):
+        # set strict attributes in the mock
+        self.obj = Mock(spec=object)
+
+    def test_is_in_fact_versioned(self):
+        self.obj.VersionedEpoch = u'1'
+        self.obj.version_id = 'somehashvalue'
+        assert client.is_versioned(self.obj) is True
+
+    def test_is_not_versioned_no_attr_versioned_epoch(self):
+        assert client.is_versioned(self.obj) is False
+
+    def test_is_not_versioned_no_attr_version_id(self):
+        assert client.is_versioned(self.obj) is False
+
+    def test_is_versioned_version_id(self):
+        self.obj.version_id = 1
+        assert client.is_versioned(self.obj) is True
+
+    def test_is_not_versioned_versioned_id_is_none(self):
+        self.obj.version_id = None
+        assert client.is_versioned(self.obj) is False
