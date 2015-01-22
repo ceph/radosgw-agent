@@ -238,31 +238,25 @@ def is_versioned(obj):
 def sync_object_intra_region(connection, bucket_name, obj, src_zone,
                              client_id, op_id):
 
-    version_id = obj.version_id
-    versioned_epoch = obj.VersionedEpoch
+    params = {
+        'rgwx-source-zone': src_zone,
+        'rgwx-client-id': client_id,
+        'rgwx-op-id': op_id,
+    }
+
+    if is_versioned(obj):
+        params['rgwx-version-id'] = obj.version_id
+        params['rgwx-versioned-epoch'] = obj.VersionedEpoch
 
     path = u'{bucket}/{object}'.format(
         bucket=bucket_name,
         object=obj.name,
         )
 
-    params = {
-        'rgwx-source-zone': src_zone,
-        'rgwx-client-id': client_id,
-        'rgwx-op-id': op_id,
-        'rgwx-version-id': version_id,
-        'rgwx-versioned-epoch': versioned_epoch,
-    }
-
-    # remove them if we are not dealing with a versioned call
-    if version_id is None and versioned_epoch is None:
-        params.pop('rgwx-versioned-epoch')
-        params.pop('rgwx-version-id')
-
     return request(connection, 'put', path,
                    params=params,
                    headers={
-                       'x-amz-copy-source': url_safe('%s/%s' % (bucket_name, object_name)),
+                       'x-amz-copy-source': url_safe('%s/%s' % (bucket_name, obj.name)),
                        },
                    expect_json=False)
 
