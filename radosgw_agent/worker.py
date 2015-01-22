@@ -159,7 +159,7 @@ class DataWorker(Worker):
         self.daemon_id = kwargs['daemon_id']
 
     def sync_object(self, bucket, obj):
-        log.debug('sync_object %s/%s', bucket, obj)
+        log.debug('sync_object %s/%s', bucket, obj.name)
         self.op_id += 1
         local_op_id = self.local_lock_id + ':' +  str(self.op_id)
         found = False
