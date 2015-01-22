@@ -223,6 +223,18 @@ def delete_object(connection, bucket_name, object_name):
     bucket.delete_key(object_name)
 
 
+def is_versioned(obj):
+    if not hasattr(obj, 'VersionedEpoch'):
+        # overly paranoid here, an object that is not versioned should *never*
+        # have a `VersionedEpoch` attribute
+        if hasattr(obj, 'version_id'):
+            if obj.version_id is None:
+                return False
+            return True  # probably will never get here
+        return False
+    return True
+
+
 def sync_object_intra_region(connection, bucket_name, obj, src_zone,
                              client_id, op_id):
 
