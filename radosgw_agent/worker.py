@@ -240,13 +240,13 @@ class DataWorker(Worker):
         for obj in objects:
             count += 1
             # sync each object
-            log.debug('syncing object "%s/%s"', bucket, obj),
+            log.debug('syncing object "%s/%s"', bucket, obj.name),
             try:
-                self.sync_object(bucket, obj)
+                self.sync_object(bucket, obj.name)
             except SyncError as err:
                 log.error('failed to sync object %s/%s: %s',
-                          bucket, obj, err)
-                retry_objs.append(obj)
+                          bucket, obj.name, err)
+                retry_objs.append(obj.name)
 
         log.debug('bucket {bucket} has {num_objects} object'.format(
                   bucket=bucket, num_objects=count))
