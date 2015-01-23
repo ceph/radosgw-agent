@@ -218,6 +218,9 @@ def delete_object(connection, bucket_name, object_name):
 
 
 def is_versioned(obj):
+    """
+    Check if a given object is versioned by inspecting some of its attributes.
+    """
     if not hasattr(obj, 'VersionedEpoch'):
         # overly paranoid here, an object that is not versioned should *never*
         # have a `VersionedEpoch` attribute
