@@ -17,11 +17,13 @@ class TestSyncObject(object):
         self.src = Mock()
         self.src.zone.name = 'Zone Name'
         self.src.host = 'example.com'
+        self.obj = Mock()
+        self.obj.name = 'mah-object'
 
     def test_syncs_correctly(self):
         with patch('radosgw_agent.worker.client'):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
-            assert w.sync_object('mah-bucket', 'mah-object') is True
+            assert w.sync_object('mah-bucket', self.obj) is True
 
     def test_syncs_not_found_on_master_deleting_from_secondary(self):
         self.client.sync_object_intra_region = Mock(side_effect=NotFound(404, ''))
@@ -29,7 +31,7 @@ class TestSyncObject(object):
         with patch('radosgw_agent.worker.client', self.client):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             w.wait_for_object = lambda *a: None
-            assert w.sync_object('mah-bucket', 'mah-object') is True
+            assert w.sync_object('mah-bucket', self.obj) is True
 
     def test_syncs_deletes_from_secondary(self):
         self.client.sync_object_intra_region = Mock(side_effect=NotFound(404, ''))
@@ -38,7 +40,7 @@ class TestSyncObject(object):
         with patch('radosgw_agent.worker.client', self.client):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             w.wait_for_object = lambda *a: None
-            assert w.sync_object('mah-bucket', 'mah-object') is False
+            assert w.sync_object('mah-bucket', self.obj) is False
 
     def test_syncs_could_not_delete_from_secondary(self):
         self.client.sync_object_intra_region = Mock(side_effect=NotFound(404, ''))
@@ -49,7 +51,7 @@ class TestSyncObject(object):
             w.wait_for_object = lambda *a: None
 
             with py.test.raises(worker.SyncFailed):
-                w.sync_object('mah-bucket', 'mah-object')
+                w.sync_object('mah-bucket', self.obj)
 
     def test_syncs_encounters_a_http_error(self):
         self.client.sync_object_intra_region = Mock(side_effect=HttpError(400, ''))
@@ -57,7 +59,7 @@ class TestSyncObject(object):
         with patch('radosgw_agent.worker.client', self.client):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             w.wait_for_object = lambda *a: None
-            w.sync_object('mah-bucket', 'mah-object')
+            w.sync_object('mah-bucket', self.obj)
 
     def test_sync_client_raises_sync_failed(self):
         self.client.sync_object_intra_region = Mock(side_effect=worker.SyncFailed('failed intra region'))
@@ -66,7 +68,7 @@ class TestSyncObject(object):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
 
             with py.test.raises(worker.SyncFailed) as exc:
-                w.sync_object('mah-bucket', 'mah-object')
+                w.sync_object('mah-bucket', self.obj)
 
             exc_message = exc.value[0]
             assert 'failed intra region' in exc_message
@@ -80,7 +82,7 @@ class TestSyncObject(object):
         with patch('radosgw_agent.worker.client', self.client):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             w.wait_for_object = lambda *a: None
-            assert w.sync_object('mah-bucket', 'mah-object') is True
+            assert w.sync_object('mah-bucket', self.obj) is True
         # logging does not play nice and so we are forced to comment this out.
         # this test does test the right thing, but we are unable to have a nice
         # assertion, the fix here is not the test it is the code that needs to
@@ -96,7 +98,7 @@ class TestSyncObject(object):
         with patch('radosgw_agent.worker.client', self.client):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             w.wait_for_object = lambda *a: None
-            assert w.sync_object('mah-bucket', 'mah-object') is True
+            assert w.sync_object('mah-bucket', self.obj) is True
 
     def test_wait_for_object_state_not_found_raises_sync_failed(self):
         self.client.get_op_state = Mock(side_effect=NotFound(404, ''))
