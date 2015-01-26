@@ -212,9 +212,26 @@ def list_objects_in_bucket(connection, bucket_name, versioned=False):
 
 
 @boto_call
-def delete_object(connection, bucket_name, object_name):
-    bucket = connection.get_bucket(bucket_name)
-    bucket.delete_key(object_name)
+def delete_object(connection, bucket_name, obj):
+    params = {}
+
+    if is_versioned(obj):
+        # when an object has a `delete_marker` attribute we don't need
+        # to try to delete again (e.g. we are doing a 'soft delete')
+        if getattr(obj, 'delete_marker', False):
+            return
+
+        params['rgwx-version-id'] = obj.version_id
+        params['rgwx-versioned-epoch'] = obj.VersionedEpoch
+
+    path = u'{bucket}/{object}'.format(
+        bucket=bucket_name,
+        object=obj.name,
+        )
+
+    return request(connection, 'delete', path,
+                   params=params,
+                   expect_json=False)
 
 
 def is_versioned(obj):
