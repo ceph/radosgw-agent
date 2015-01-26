@@ -180,7 +180,7 @@ class DataWorker(Worker):
                 # Since we were trying to delete the object, just return
                 return False
             except Exception:
-                msg = 'could not delete "%s/%s" from secondary' % (bucket, obj)
+                msg = 'could not delete "%s/%s" from secondary' % (bucket, obj.name)
                 log.exception(msg)
                 raise SyncFailed(msg)
         except SyncFailed:
@@ -333,6 +333,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
                 new_retries.append(bucket_instance)
 
         return new_retries
+
 
 class DataWorkerFull(DataWorker):
 
