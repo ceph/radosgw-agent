@@ -212,17 +212,19 @@ def list_objects_in_bucket(connection, bucket_name, versioned=False):
 
 
 @boto_call
-def delete_object(connection, bucket_name, obj):
+def mark_delete_object(connection, bucket_name, obj):
+    """
+    Marking an object for deletion is only necessary for versioned objects, we
+    should not try these calls for non-versioned ones.
+    """
+    # if obj.delete_marker is True, no need to do anything else here
+    if getattr(obj, 'delete_marker', False):
+        return
+
     params = {}
 
-    if is_versioned(obj):
-        # when an object has a `delete_marker` attribute we don't need
-        # to try to delete again (e.g. we are doing a 'soft delete')
-        if getattr(obj, 'delete_marker', False):
-            return
-
-        params['rgwx-version-id'] = obj.version_id
-        params['rgwx-versioned-epoch'] = obj.VersionedEpoch
+    params['rgwx-version-id'] = obj.version_id
+    params['rgwx-versioned-epoch'] = obj.VersionedEpoch
 
     path = u'{bucket}/{object}'.format(
         bucket=bucket_name,
@@ -232,6 +234,42 @@ def delete_object(connection, bucket_name, obj):
     return request(connection, 'delete', path,
                    params=params,
                    expect_json=False)
+
+
+@boto_call
+def delete_versioned_object(connection, bucket_name, obj):
+    """
+    Perform a delete on a versioned object, the requirements for these types
+    of requests is to be able to pass the ``versionID`` as a query argument
+    """
+    # if obj.delete_marker is False we should not delete this and we shouldn't
+    # have been called, so return without doing anything
+    if getattr(obj, 'delete_marker', False) is False:
+        return
+
+    params = {}
+
+    params['rgwx-version-id'] = obj.version_id
+    params['rgwx-versioned-epoch'] = obj.VersionedEpoch
+    params['versionID'] = obj.version_id
+
+    path = u'{bucket}/{object}'.format(
+        bucket=bucket_name,
+        object=obj.name,
+        )
+
+    return request(connection, 'delete', path,
+                   params=params,
+                   expect_json=False)
+
+
+@boto_call
+def delete_object(connection, bucket_name, obj):
+    if is_versioned(obj):
+        delete_versioned_object(connection, bucket_name, obj)
+    else:
+        bucket = connection.get_bucket(bucket_name)
+        bucket.delete_key(obj.name)
 
 
 def is_versioned(obj):
