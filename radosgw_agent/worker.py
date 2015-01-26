@@ -7,7 +7,7 @@ import time
 
 from radosgw_agent import client
 from radosgw_agent import lock
-from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed
+from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class Worker(multiprocessing.Process):
         try:
             self.lock.set_shard(shard_num)
             self.lock.acquire()
-        except client.NotFound:
+        except NotFound:
             # no log means nothing changed this shard yet
             self.lock.unset_shard()
             self.result_queue.put((RESULT_SUCCESS, result))
@@ -174,12 +174,12 @@ class DataWorker(Worker):
                                             self.daemon_id,
                                             local_op_id)
             found = True
-        except client.NotFound:
+        except NotFound:
             log.debug('"%s/%s" not found on master, deleting from secondary',
                       bucket, obj)
             try:
                 client.delete_object(self.dest_conn, bucket, obj)
-            except client.NotFound:
+            except NotFound:
                 # Since we were trying to delete the object, just return
                 return False
             except Exception:
@@ -197,7 +197,7 @@ class DataWorker(Worker):
             if found:
                 client.remove_op_state(self.dest_conn, self.daemon_id,
                                        local_op_id, bucket, obj)
-        except client.NotFound:
+        except NotFound:
             log.debug('op state already gone')
         except Exception:
             log.exception('could not remove op state for daemon "%s" op_id %s',
@@ -221,7 +221,7 @@ class DataWorker(Worker):
                 time.sleep(1)
             except SyncFailed:
                 raise
-            except client.NotFound:
+            except NotFound:
                 raise SyncFailed('object copy state not found')
             except Exception as e:
                 log.debug('error geting op state: %s', e, exc_info=True)
@@ -272,7 +272,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
             try:
                 log_entries = client.get_log(self.src_conn, 'bucket-index',
                                              marker, self.max_entries, instance)
-            except client.NotFound:
+            except NotFound:
                 log_entries = []
 
             log.debug('bucket instance "%s" has %d entries after "%s"', instance,
@@ -319,7 +319,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
                     self.dest_conn,
                     'bucket-index',
                     bucket_instance)
-            except client.NotFound:
+            except NotFound:
                 log.debug('no worker bound found for bucket instance "%s"',
                           bucket_instance)
                 marker, timestamp, retries = ' ', DEFAULT_TIME, []
@@ -345,7 +345,7 @@ class DataWorkerFull(DataWorker):
             try:
                 marker = client.get_log_info(self.src_conn, 'bucket-index',
                                              instance)['max_marker']
-            except client.NotFound:
+            except NotFound:
                 marker = ' '
             log.debug('bucket instance is "%s" with marker %s', instance, marker)
 
@@ -354,7 +354,7 @@ class DataWorkerFull(DataWorker):
 
             result = self.set_bound(instance, marker, retries, 'bucket-index')
             return not retries and result == RESULT_SUCCESS
-        except client.BucketEmpty:
+        except BucketEmpty:
             log.debug('no objects in bucket %s', bucket)
             return True
         except Exception:
@@ -402,12 +402,12 @@ class MetadataWorker(Worker):
         log.debug('syncing metadata type %s key "%s"', section, name)
         try:
             metadata = client.get_metadata(self.src_conn, section, name)
-        except client.NotFound:
+        except NotFound:
             log.debug('%s "%s" not found on master, deleting from secondary',
                       section, name)
             try:
                 client.delete_metadata(self.dest_conn, section, name)
-            except client.NotFound:
+            except NotFound:
                 # Since this error is handled appropriately, return success
                 return RESULT_SUCCESS
         except Exception as e:
