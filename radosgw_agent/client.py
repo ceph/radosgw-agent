@@ -216,6 +216,9 @@ def mark_delete_object(connection, bucket_name, obj):
     """
     Marking an object for deletion is only necessary for versioned objects, we
     should not try these calls for non-versioned ones.
+
+    Usually, only full-sync operations will use this call, incremental should
+    perform actual delete operations with ``delete_versioned_object``
     """
     # if obj.delete_marker is True, no need to do anything else here
     if getattr(obj, 'delete_marker', False):
