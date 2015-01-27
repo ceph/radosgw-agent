@@ -171,7 +171,7 @@ def get_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'get', 'admin/opstate',
                    params={
                        'op-id': op_id,
-                       'object': u'{0}/{1}'.format(bucket, obj),
+                       'object': u'{0}/{1}'.format(bucket, obj.name),
                        'client-id': client_id,
                       }
                    )
@@ -181,7 +181,7 @@ def remove_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'delete', 'admin/opstate',
                    params={
                        'op-id': op_id,
-                       'object': u'{0}/{1}'.format(bucket, obj),
+                       'object': u'{0}/{1}'.format(bucket, obj.name),
                        'client-id': client_id,
                       },
                    expect_json=False,
