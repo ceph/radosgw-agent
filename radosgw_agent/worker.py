@@ -185,7 +185,7 @@ class DataWorker(Worker):
                 raise SyncFailed(msg)
         except SyncFailed:
             raise
-        except Exception as e:
+        except Exception:
             log.warn('encountered an exception during sync', exc_info=True)
             # wait for it if the op state is in-progress
             self.wait_for_object(bucket, obj, until, local_op_id)
