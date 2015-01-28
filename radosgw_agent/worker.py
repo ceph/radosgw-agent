@@ -8,13 +8,10 @@ import time
 from radosgw_agent import client
 from radosgw_agent import lock
 from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
+from radosgw_agent.constants import DEFAULT_TIME, RESULT_SUCCESS, RESULT_ERROR
 
 log = logging.getLogger(__name__)
 
-RESULT_SUCCESS = 0
-RESULT_ERROR = 1
-
-DEFAULT_TIME = '1970-01-01 00:00:00'
 
 class Worker(multiprocessing.Process):
     """sync worker to run in its own process"""
@@ -314,15 +311,15 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
 
         new_retries = []
         for bucket_instance in bucket_instances.union(retries):
-            try:
-                marker, timestamp, retries = client.get_worker_bound(
-                    self.dest_conn,
-                    'bucket-index',
-                    bucket_instance)
-            except NotFound:
-                log.debug('no worker bound found for bucket instance "%s"',
-                          bucket_instance)
-                marker, timestamp, retries = ' ', DEFAULT_TIME, []
+            bound = client.get_worker_bound(
+                self.dest_conn,
+                'bucket-index',
+                bucket_instance)
+
+            marker = bound['marker']
+            retries = bound['retries']
+            timestamp = bound['oldest_time']
+
             try:
                 sync_result = self.inc_sync_bucket_instance(bucket_instance,
                                                             marker,

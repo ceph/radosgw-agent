@@ -6,6 +6,7 @@ import re
 
 from radosgw_agent import client
 from radosgw_agent import exceptions as exc
+from radosgw_agent.constants import DEFAULT_TIME
 
 # parametrization helpers
 
@@ -582,3 +583,65 @@ class TestClientListObjectsInBucket(object):
         assert obj['last_modified'] == '2015-01-15T15:24:42.000Z'
         assert obj['storage_class'] == 'STANDARD'
         assert obj['owner'] == owner
+
+
+
+class TestClientGetWorkerBound(object):
+
+    def setup(self):
+        self.connection = client.connection(
+            client.Endpoint('localhost', 8888, False, 'key', 'secret'),
+            True,
+        )
+        self.body = """
+        {"marker": "00000000002.2.3",
+            "markers": [
+                {
+                    "entity": "radosgw-agent",
+                    "items_in_progress": [
+                        {
+                            "name": "hello",
+                            "timestamp": "0.000000"
+                        }
+                    ],
+                    "position_marker": "00000000002.2.3",
+                    "position_time": "0.000000"
+                }
+            ],
+         "oldest_time": "0.000000"
+        }
+        """
+
+    def register(self, body=None, status=200):
+        body = body or self.body
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/(.*)"),
+            body=body,
+            content_type="application/json",
+            status=status
+        )
+
+    @httpretty.activate
+    def test_get_bound_has_right_metadata(self):
+        self.register()
+        result = client.get_worker_bound(
+            self.connection,
+            'bucket-index',
+            'beast:us-east'
+        )
+        assert result['marker'] == "00000000002.2.3"
+        assert result['retries'] == set(['hello'])
+        assert result['oldest_time'] == "0.000000"
+
+    @httpretty.activate
+    def test_get_bound_fails_fallsback_to_defaults(self):
+        self.register(status=404)
+        result = client.get_worker_bound(
+            self.connection,
+            'bucket-index',
+            'beast:us-east'
+        )
+        assert result['marker'] == " "
+        assert result['retries'] == []
+        assert result['oldest_time'] == DEFAULT_TIME

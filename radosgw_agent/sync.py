@@ -171,18 +171,20 @@ class Syncer(object):
 class IncrementalSyncer(Syncer):
 
     def get_worker_bound(self, shard_num):
-        try:
-            marker, timestamp, retries = client.get_worker_bound(
-                self.dest_conn,
-                self.type,
-                shard_num)
-            log.debug('oldest marker and time for shard %d are: %r %r',
-                      shard_num, marker, timestamp)
-            log.debug('%d items to retrie are: %r', len(retries), retries)
-        except NotFound:
-            # if no worker bounds have been set, start from the beginning
-            marker, retries = '', []
+        bound = client.get_worker_bound(
+            self.dest_conn,
+            self.type,
+            shard_num)
+
+        marker = bound['marker']
+        retries = bound['retries']
+
+        log.debug('oldest marker and time for shard %d are: %r %r',
+                  shard_num, marker, bound['oldest_time'])
+        log.debug('%d items to retrie are: %r', len(retries), retries)
+
         return marker, retries
+
 
     def get_log_entries(self, shard_num, marker):
         try:

@@ -11,6 +11,7 @@ from boto.s3.connection import S3Connection
 
 from radosgw_agent import request as aws_request
 from radosgw_agent import exceptions as exc
+from radosgw_agent.constants import DEFAULT_TIME
 
 log = logging.getLogger(__name__)
 
@@ -292,7 +293,12 @@ def num_log_shards(connection, shard_type):
 
 
 def set_worker_bound(connection, type_, marker, timestamp,
-                     daemon_id, id_, data=None):
+                     daemon_id, id_, data=None, sync_type='incremental'):
+    """
+
+    :param sync_type: The type of synchronization that should be attempted by
+    the agent, defaulting to "incremental" but can also be "full".
+    """
     if data is None:
         data = []
     key = _id_name(type_)
@@ -305,6 +311,7 @@ def set_worker_bound(connection, type_, marker, timestamp,
             'marker': marker,
             'time': timestamp,
             'daemon_id': daemon_id,
+            'sync-type': sync_type,
             },
         data=json.dumps(data),
         special_first_param='work_bound',
@@ -327,20 +334,33 @@ def del_worker_bound(connection, type_, daemon_id, id_):
 
 def get_worker_bound(connection, type_, id_):
     key = _id_name(type_)
-    out = request(
-        connection, 'get', 'admin/replica_log',
-        params={
-            'type': type_,
-            key: id_,
-            },
-        special_first_param='bounds',
+    try:
+        out = request(
+            connection, 'get', 'admin/replica_log',
+            params={
+                'type': type_,
+                key: id_,
+                },
+            special_first_param='bounds',
+            )
+        boto.log.debug('get_worker_bound returned: %r', out)
+    except exc.NotFound:
+        log.debug('no worker bound found for bucket instance "%s"',
+                  id_)
+        # if no worker bounds have been set, start from the beginning
+        # returning fallback, default values
+        return dict(
+            marker=' ',
+            oldest_time=DEFAULT_TIME,
+            retries=[]
         )
-    boto.log.debug('get_worker_bound returned: %r', out)
+
     retries = set()
     for item in out['markers']:
         names = [retry['name'] for retry in item['items_in_progress']]
         retries = retries.union(names)
-    return out['marker'], out['oldest_time'], retries
+    out['retries'] = retries
+    return out
 
 
 class Zone(object):
