@@ -236,7 +236,7 @@ def mark_delete_object(connection, bucket_name, obj, params=None):
         object=obj.name,
         )
 
-    return request(connection, 'put', path,
+    return request(connection, 'delete', path,
                    params=params,
                    expect_json=False)
 
