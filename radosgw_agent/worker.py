@@ -121,6 +121,20 @@ def _bi_entry_from_json(entry):
         )
 
 
+def filter_versioned_objects(entry):
+    """
+    On incremental sync operations, the log may indicate that 'olh' entries,
+    which should be ignored. So this filter function will check for the
+    different attributes present in an ``entry`` and return only valid ones.
+
+    This should be backwards compatible with older gateways that return log
+    entries that don't support versioning.
+    """
+    # writes or delete 'op' values should be ignored
+    if entry.op not in ['write', 'delete']:
+        return entry
+
+
 class IncrementalMixin(object):
     """This defines run() and get_and_process_entries() for incremental sync.
 
