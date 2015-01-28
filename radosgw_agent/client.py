@@ -212,7 +212,7 @@ def list_objects_in_bucket(connection, bucket_name, versioned=False):
 
 
 @boto_call
-def mark_delete_object(connection, bucket_name, obj):
+def mark_delete_object(connection, bucket_name, obj, params=None):
     """
     Marking an object for deletion is only necessary for versioned objects, we
     should not try these calls for non-versioned ones.
@@ -220,11 +220,7 @@ def mark_delete_object(connection, bucket_name, obj):
     Usually, only full-sync operations will use this call, incremental should
     perform actual delete operations with ``delete_versioned_object``
     """
-    # if obj.delete_marker is True, no need to do anything else here
-    if getattr(obj, 'delete_marker', False):
-        return
-
-    params = {}
+    params = params or {}
 
     params['rgwx-version-id'] = obj.version_id
     params['rgwx-versioned-epoch'] = obj.VersionedEpoch
@@ -234,7 +230,7 @@ def mark_delete_object(connection, bucket_name, obj):
         object=obj.name,
         )
 
-    return request(connection, 'delete', path,
+    return request(connection, 'put', path,
                    params=params,
                    expect_json=False)
 
@@ -300,6 +296,10 @@ def sync_object_intra_region(connection, bucket_name, obj, src_zone,
     }
 
     if is_versioned(obj):
+        if obj.delete_marker is True:
+            # when the object has a delete marker we need to create it with
+            # a delete marker on the destination rather than copying
+            return mark_delete_object(connection, bucket_name, obj, params=params)
         params['rgwx-version-id'] = obj.version_id
         params['rgwx-versioned-epoch'] = obj.VersionedEpoch
 
