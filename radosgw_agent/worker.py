@@ -90,6 +90,7 @@ class Worker(multiprocessing.Process):
 MetadataEntry = namedtuple('MetadataEntry',
                            ['section', 'name', 'marker', 'timestamp'])
 
+
 def _meta_entry_from_json(entry):
     return MetadataEntry(
         entry['section'],
@@ -106,8 +107,7 @@ BucketIndexEntry = namedtuple('BucketIndexEntry',
                                   'op',
                                   'versioned',
                                   'ver',
-                              ]
-                            )
+                              ])
 
 
 def _bi_entry_from_json(entry):
