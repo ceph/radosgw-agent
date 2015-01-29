@@ -108,6 +108,7 @@ BucketIndexEntry = namedtuple('BucketIndexEntry',
                                   'op',
                                   'versioned',
                                   'ver',
+                                  'name',
                               ])
 
 
@@ -119,6 +120,7 @@ def _bi_entry_from_json(entry):
         entry.get('op', ''),
         entry.get('versioned', False),
         entry.get('ver', {}),
+        entry['object'],
         )
 
 
