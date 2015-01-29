@@ -1,4 +1,5 @@
 from collections import namedtuple
+from itertools import ifilter
 import logging
 import multiprocessing
 import os
@@ -132,6 +133,7 @@ def filter_versioned_objects(entry):
     """
     # writes or delete 'op' values should be ignored
     if entry.op not in ['write', 'delete']:
+        # allowed op states are `link_olh` and `link_olh_del`
         return entry
 
 
@@ -307,6 +309,9 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
             except KeyError:
                 log.error('log missing key is: %s', log_entries)
                 raise
+
+            # regardless if entries are versioned, make sure we filter them
+            entries = [i for i in ifilter(filter_versioned_objects, entries)]
 
             if entries:
                 marker = entries[-1].marker
