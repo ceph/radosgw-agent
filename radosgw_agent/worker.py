@@ -326,7 +326,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
 
     def inc_sync_bucket_instance(self, instance, marker, timestamp, retries):
         max_marker, entries = self.get_bucket_instance_entries(marker, instance)
-        objects = set([entry.object for entry in entries])
+        objects = set([entry for entry in entries])
         bucket = self.get_bucket(instance)
         new_retries = self.sync_bucket(bucket, objects.union(retries))
 
