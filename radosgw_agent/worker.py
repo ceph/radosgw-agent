@@ -273,7 +273,7 @@ class DataWorker(Worker):
             # sync each object
             log.debug('syncing object "%s/%s"', bucket, obj.name),
             try:
-                self.sync_object(bucket, obj.name)
+                self.sync_object(bucket, obj)
             except SyncError as err:
                 log.error('failed to sync object %s/%s: %s',
                           bucket, obj.name, err)
