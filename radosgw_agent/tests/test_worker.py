@@ -1,6 +1,9 @@
 from mock import Mock, patch
+import json
 import py.test
 import time
+import httpretty
+import re
 
 from radosgw_agent import worker, client
 from radosgw_agent.exceptions import HttpError, NotFound, BucketEmpty
@@ -144,3 +147,62 @@ class TestSyncObject(object):
             objects = fake_iterable()
             with py.test.raises(BucketEmpty):
                 w.sync_bucket('foo', objects)
+
+
+
+def create_fake_endpoint(name='source', **kw):
+    ep = Mock()
+    ep.zone.name = name
+    ep.secret_key = kw.get('secret', 'secret')
+    ep.access_key = kw.get('access', 'access')
+    ep.port = kw.get('port', 7777)
+    ep.host = kw.get('host', 'localhost')
+    ep.debug = kw.get('debug', True)
+    return ep
+
+def create_log_entry(name='foo', **kw):
+    return {
+        "op_id": kw.get('op_id',"00000000006.3741.3"),
+        "op_tag": kw.get('op_tag', "default.21007.10"),
+        "op": kw.get('op', "link_olh"),
+        "object": name,
+        "instance": kw.get('instance',"uWueo6N+Hm6Sp86OdxfnfDHfUKRy\/gOu"),
+        "state": kw.get('state', "complete"),
+        "index_ver": kw.get('index_ver', 6),
+        "timestamp": kw.get('timestamp', "2015-01-07 00:21:41.000000Z"),
+        "ver": kw.get('ver', { "pool": 12, "epoch": 20818}),
+        "versioned": kw.get('versioned', True),
+    }
+
+
+class TestDataWorkerIncremental(object):
+
+    def setup(self):
+        self.w = worker.DataWorkerIncremental(
+            None, None, None, create_fake_endpoint(),
+            create_fake_endpoint('dest'), daemon_id=1, max_entries=10
+        )
+
+    def register(self, src_body=None, dest_body=None, status=200):
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:7777/admin/log(.*)"),
+            body=src_body or "{}",
+            content_type="application/json",
+            status=status
+        )
+        httpretty.register_uri(
+            httpretty.GET,
+            re.compile("http://localhost:8888/admin/log(.*)"),
+            body=dest_body or "{}",
+            content_type="application/json",
+            status=status
+        )
+
+    @httpretty.activate
+    def test_items_from_source_only(self):
+        src_body = json.dumps([create_log_entry('foo_1')])
+        self.register(src_body=src_body)
+        marker, entries = self.w.get_bucket_instance_entries(2, 'bucket')
+        assert marker == '00000000006.3741.3'
+        assert len(entries) == 1
