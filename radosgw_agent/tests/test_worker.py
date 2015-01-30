@@ -214,3 +214,12 @@ class TestDataWorkerIncremental(object):
         marker, entries = self.w.get_bucket_instance_entries(2, 'bucket')
         assert marker == ' '
         assert len(entries) == 0
+
+    @httpretty.activate
+    def test_no_valid_versioned_items_for_delete_op(self):
+        src_body = json.dumps([create_log_entry('foo_1', op='write')])
+        self.register(src_body=src_body)
+        marker, entries = self.w.get_bucket_instance_entries(2, 'bucket')
+        assert marker == ' '
+        assert len(entries) == 0
+
