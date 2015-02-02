@@ -111,15 +111,27 @@ BucketIndexEntry = namedtuple('BucketIndexEntry',
                                   'name',
                               ])
 
+BucketVer = namedtuple('BucketVer',
+        [
+            'epoch',
+            'pool',
+        ])
+
 
 def _bi_entry_from_json(entry):
+    ver = entry.get('ver', {})
+    entry_ver = BucketVer(
+        ver.get('epoch'),
+        ver.get('pool')
+    )
+
     return BucketIndexEntry(
         entry['object'],
         entry['op_id'],
         entry['timestamp'],
         entry.get('op', ''),
         entry.get('versioned', False),
-        entry.get('ver', {}),
+        entry_ver,
         entry['object'],
         )
 
