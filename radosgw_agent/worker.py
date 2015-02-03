@@ -324,13 +324,13 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
                 log.error('log missing key is: %s', log_entries)
                 raise
 
-            # regardless if entries are versioned, make sure we filter them
-            entries = [i for i in ifilter(filter_versioned_objects, entries)]
-
             if entries:
                 marker = entries[-1].marker
             else:
                 marker = ' '
+
+            # regardless if entries are versioned, make sure we filter them
+            entries = [i for i in ifilter(filter_versioned_objects, entries)]
 
             if len(log_entries) < self.max_entries:
                 break
