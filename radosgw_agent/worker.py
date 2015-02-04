@@ -109,6 +109,9 @@ BucketIndexEntry = namedtuple('BucketIndexEntry',
                                   'versioned',
                                   'ver',
                                   'name',
+                                  # compatibility with boto objects:
+                                  'VersionedEpoch',
+                                  'version_id',
                               ])
 
 BucketVer = namedtuple('BucketVer',
@@ -125,6 +128,10 @@ def _bi_entry_from_json(entry):
         ver.get('pool')
     )
 
+    # compatibility with boto objects:
+    VersionedEpoch = ver.get('epoch')
+    version_id = entry.get('instance')
+
     return BucketIndexEntry(
         entry['object'],
         entry['op_id'],
@@ -133,6 +140,8 @@ def _bi_entry_from_json(entry):
         entry.get('versioned', False),
         entry_ver,
         entry['object'],
+        VersionedEpoch,
+        version_id,
         )
 
 
