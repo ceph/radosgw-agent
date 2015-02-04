@@ -296,7 +296,7 @@ def sync_object_intra_region(connection, bucket_name, obj, src_zone,
     }
 
     if is_versioned(obj):
-        if obj.delete_marker is True:
+        if getattr(obj, 'delete_marker') is True:
             # when the object has a delete marker we need to create it with
             # a delete marker on the destination rather than copying
             return mark_delete_object(connection, bucket_name, obj, params=params)
