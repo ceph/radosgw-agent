@@ -184,6 +184,7 @@ class TestDataWorkerIncremental(object):
         )
 
     def register(self, src_body=None, dest_body=None, status=200):
+
         httpretty.register_uri(
             httpretty.GET,
             re.compile("http://localhost:7777/admin/log(.*)"),
@@ -206,20 +207,3 @@ class TestDataWorkerIncremental(object):
         marker, entries = self.w.get_bucket_instance_entries(2, 'bucket')
         assert marker == '00000000006.3741.3'
         assert len(entries) == 1
-
-    @httpretty.activate
-    def test_no_valid_versioned_items_for_delete_op(self):
-        src_body = json.dumps([create_log_entry('foo_1', op='delete')])
-        self.register(src_body=src_body)
-        marker, entries = self.w.get_bucket_instance_entries(2, 'bucket')
-        assert marker == ' '
-        assert len(entries) == 0
-
-    @httpretty.activate
-    def test_no_valid_versioned_items_for_write_op(self):
-        src_body = json.dumps([create_log_entry('foo_1', op='write')])
-        self.register(src_body=src_body)
-        marker, entries = self.w.get_bucket_instance_entries(2, 'bucket')
-        assert marker == ' '
-        assert len(entries) == 0
-
