@@ -306,8 +306,10 @@ def sync_object_intra_region(connection, bucket_name, obj, src_zone,
     if is_versioned(obj):
         log.debug('detected obj as versioned: %s' % obj.name)
         log.debug('obj attributes are:')
-        for k, v in obj.__dict__.items():
-            log.debug('%s.%s = %s' % (obj.name, k, v))
+        for k in dir(obj):
+            if not k.startswith('_'):
+                v = getattr(obj, k, None)
+                log.debug('%s.%s = %s' % (obj.name, k, v))
 
         # set the extra params to support versioned operations
         params['rgwx-version-id'] = obj.version_id
