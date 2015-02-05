@@ -297,14 +297,17 @@ def sync_object_intra_region(connection, bucket_name, obj, src_zone,
 
     if is_versioned(obj):
         log.debug('detected obj as versioned: %s' % obj.name)
+
+        # set the extra params to support versioned operations
+        params['rgwx-version-id'] = obj.version_id
+        params['rgwx-versioned-epoch'] = obj.VersionedEpoch
+
         # delete_marker may not exist in the obj
         if getattr(obj, 'delete_marker', None) is True:
             log.debug('obj %s has a delete_marker, marking for deletion' % obj.name)
             # when the object has a delete marker we need to create it with
             # a delete marker on the destination rather than copying
             return mark_delete_object(connection, bucket_name, obj, params=params)
-        params['rgwx-version-id'] = obj.version_id
-        params['rgwx-versioned-epoch'] = obj.VersionedEpoch
 
     path = u'{bucket}/{object}'.format(
         bucket=bucket_name,
