@@ -244,6 +244,7 @@ def delete_versioned_object(connection, bucket_name, obj):
     # if obj.delete_marker is False we should not delete this and we shouldn't
     # have been called, so return without doing anything
     if getattr(obj, 'delete_marker', False) is False:
+        log.info('obj: %s has `delete_marker=False`, will skip' % obj.name)
         return
 
     params = {}
@@ -298,6 +299,9 @@ def sync_object_intra_region(connection, bucket_name, obj, src_zone,
 
     if is_versioned(obj):
         log.debug('detected obj as versioned: %s' % obj.name)
+        log.debug('obj attributes are:')
+        for k, v in obj.__dict__.items():
+            log.debug('%s.%s = %s' % (obj.name, k, v))
 
         # set the extra params to support versioned operations
         params['rgwx-version-id'] = obj.version_id
