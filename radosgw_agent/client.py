@@ -284,7 +284,7 @@ def is_versioned(obj):
     if not hasattr(obj, 'VersionedEpoch'):
         # overly paranoid here, an object that is not versioned should *never*
         # have a `VersionedEpoch` attribute
-        if hasattr(obj, 'version_id'):
+        if getattr(obj, 'version_id', None):
             if obj.version_id is None:
                 return False
             return True  # probably will never get here
