@@ -271,6 +271,7 @@ def delete_versioned_object(connection, bucket_name, obj):
 @boto_call
 def delete_object(connection, bucket_name, obj):
     if is_versioned(obj):
+        log.debug('performing a delete for versioned obj: %s' % obj.name)
         delete_versioned_object(connection, bucket_name, obj)
     else:
         bucket = connection.get_bucket(bucket_name)
