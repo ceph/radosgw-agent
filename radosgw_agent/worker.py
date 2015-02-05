@@ -338,15 +338,16 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
             else:
                 marker = ' '
 
-            # regardless if entries are versioned, make sure we filter them
-            entries = [i for i in ifilter(filter_versioned_objects, entries)]
-
             if len(log_entries) < self.max_entries:
                 break
         return marker, entries
 
     def inc_sync_bucket_instance(self, instance, marker, timestamp, retries):
         max_marker, entries = self.get_bucket_instance_entries(marker, instance)
+
+        # regardless if entries are versioned, make sure we filter them
+        entries = [i for i in ifilter(filter_versioned_objects, entries)]
+
         objects = set([entry for entry in entries])
         bucket = self.get_bucket(instance)
         new_retries = self.sync_bucket(bucket, objects.union(retries))
