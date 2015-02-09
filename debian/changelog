@@ -1,3 +1,9 @@
+radosgw-agent (1.2.1) stable; urgency=low
+
+  * New upstream release
+
+ -- Alfredo Deza <adeza@redhat.com>  Mon, 09 Feb 2015 12:52:46 -0800
+
 radosgw-agent (1.2-1) precise; urgency=low
 
   * new upstream release
