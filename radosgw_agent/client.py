@@ -283,8 +283,8 @@ def is_versioned(obj):
     """
     Check if a given object is versioned by inspecting some of its attributes.
     """
-    # before any heuristic, newer versions of RGW will tell if an obj is versioned
-    # so try that first
+    # before any heuristic, newer versions of RGW will tell if an obj is
+    # versioned so try that first
     if hasattr(obj, 'versioned'):
         return obj.versioned
 
