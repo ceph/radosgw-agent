@@ -1,6 +1,11 @@
 Changelog
 =========
 
+1.2.1
+-----
+* Parity in version release for DEB/RPMs to PyPI. Previous 1.2 release had
+  fixes available only for the Python package.
+
 1.2
 ---
 * Improve usage for log (working better with logrotate)
