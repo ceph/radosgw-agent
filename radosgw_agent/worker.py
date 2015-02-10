@@ -346,7 +346,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
         max_marker, entries = self.get_bucket_instance_entries(marker, instance)
 
         # regardless if entries are versioned, make sure we filter them
-        entries = [i for i in ifilter(filter_versioned_objects, entries)]
+        #entries = [i for i in ifilter(filter_versioned_objects, entries)]
 
         objects = set([entry for entry in entries])
         bucket = self.get_bucket(instance)
