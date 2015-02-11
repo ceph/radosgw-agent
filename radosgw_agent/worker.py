@@ -130,7 +130,7 @@ def _bi_entry_from_json(entry):
 
     # compatibility with boto objects:
     VersionedEpoch = ver.get('epoch')
-    version_id = entry.get('instance')
+    version_id = entry.get('instance', 'null')
 
     return BucketIndexEntry(
         entry['object'],
