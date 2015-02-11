@@ -154,6 +154,10 @@ def filter_versioned_objects(entry):
     This should be backwards compatible with older gateways that return log
     entries that don't support versioning.
     """
+    # do not attempt filtering on non-versioned entries
+    if not entry.versioned:
+        return entry
+
     # writes or delete 'op' values should be ignored
     if entry.op not in ['write', 'delete']:
         # allowed op states are `link_olh` and `link_olh_del`
