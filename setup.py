@@ -39,6 +39,7 @@ setup(
     entry_points={
         'console_scripts': [
             'radosgw-agent = radosgw_agent.cli:main',
+            'radosgw-sync = radosgw_agent.sync_tool:main',
             ],
         },
     )
