@@ -9,6 +9,8 @@ import sys
 
 from radosgw_agent import client
 from radosgw_agent import sync
+from radosgw_agent import worker
+
 
 def check_positive_int(string):
     value = int(string)
@@ -171,6 +173,11 @@ def parse_args():
         help=argparse.SUPPRESS,
         )
     parser.add_argument(
+        '--daemon_id',
+        # port to run a simple http server for testing the sync agent on,
+        default='radosgw-sync',
+        )
+    parser.add_argument(
         '--test-server-port',
         # port to run a simple http server for testing the sync agent on,
         type=check_positive_int,
@@ -232,10 +239,22 @@ class TestHandler(BaseHTTPRequestHandler):
             self.send_response(status)
             self.end_headers()
 
+class SyncToolDataSync:
+    def __init__(self, worker):
+        self.worker = worker
+
+    def sync_object(self, bucket, obj):
+        if not self.worker.sync_object(bucket, obj):
+            log.info('failed to sync {b}/{o}'.format(b=bucket, o=obj))
+
 class SyncToolCommand:
 
     def __init__(self):
+        global log
+
         args, self.remaining = parse_args()
+
+        self.args = args
 
         log = logging.getLogger()
         log_level = logging.INFO
@@ -283,6 +302,8 @@ class SyncToolCommand:
         self.src.access_key = args.src_access_key
         self.src.secret_key = args.src_secret_key
 
+        self.log = log
+
 
     def _parse(self):
         parser = argparse.ArgumentParser(
@@ -296,13 +317,13 @@ The commands are:
         # parse_args defaults to [1:] for args, but you need to
         # exclude the rest of the args too, or validation will fail
         
-        args = parser.parse_args(self.remaining[0:1])
-        if not hasattr(self, args.command) or args.command[0] == '_':
-            print 'Unrecognized command:', args.command
+        cmd_args = parser.parse_args(self.remaining[0:1])
+        if not hasattr(self, cmd_args.command) or cmd_args.command[0] == '_':
+            print 'Unrecognized command:', cmd_args.command
             parser.print_help()
             exit(1)
         # use dispatch pattern to invoke method with same name
-        ret = getattr(self, args.command)
+        ret = getattr(self, cmd_args.command)
         return ret
 
     def data_sync(self):
@@ -316,8 +337,24 @@ The commands are:
 
         assert len(target) > 0
 
-        # TODO
+        bucket = target[0]
 
+        sync = SyncToolDataSync(worker.DataWorker(None,
+                           None,
+                           20, # log lock timeout
+                           self.src,
+                           self.dest,
+                           daemon_id=self.args.daemon_id,
+                           max_entries=self.args.max_entries,
+                           object_sync_timeout=self.args.object_sync_timeout))
+
+        if len(target) == 1:
+            log.info('sync bucket={b}'.format(b=bucket))
+        else:
+            obj = target[1]
+            log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj))
+
+            sync.sync_object(bucket, obj)
 
 def main():
 
