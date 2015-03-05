@@ -3,6 +3,7 @@ import functools
 import json
 import logging
 import random
+import socket
 import urllib
 from urlparse import urlparse
 
@@ -12,6 +13,7 @@ from boto.s3.connection import S3Connection
 from radosgw_agent import request as aws_request
 from radosgw_agent import exceptions as exc
 from radosgw_agent.constants import DEFAULT_TIME
+from radosgw_agent.exceptions import NetworkError
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +133,10 @@ def request(connection, type_, resource, params=None, headers=None,
             data=request_data,
             params=safe_params,
             _retries=_retries)
+    except socket.error as error:
+        msg = 'unable to connect to %s %s' % (request.host, error)
+        raise NetworkError(msg)
+
     except BotoServerError as error:
         check_result_status(error)
 
