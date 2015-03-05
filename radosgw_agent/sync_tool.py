@@ -367,7 +367,11 @@ class Object:
         self.obj = obj
 
     def sync(self):
-        self.sync_work.sync_object(self.bucket, self.obj)
+        try:
+            self.sync_work.sync_object(self.bucket, self.obj)
+            return True
+        except:
+            return False
 
     def status(self):
         opstate_ret = client.get_op_state(self.sync_work.dest_conn, '', '', self.bucket, self.obj)
@@ -514,7 +518,7 @@ The commands are:
             log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
 
             ret = obj.sync()
-            if not ret:
+            if ret == False:
                 log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=obj_name))
 
 def main():

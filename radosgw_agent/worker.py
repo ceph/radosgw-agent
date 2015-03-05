@@ -236,6 +236,8 @@ class DataWorker(Worker):
                       bucket, obj.name)
             try:
                 client.delete_object(self.dest_conn, bucket, obj)
+                client.remove_op_state(self.dest_conn, self.daemon_id,
+                                       local_op_id, bucket, obj)
             except NotFound:
                 # Since we were trying to delete the object, just return
                 return False
