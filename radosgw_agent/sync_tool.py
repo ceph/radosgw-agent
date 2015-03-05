@@ -351,11 +351,12 @@ class Bucket:
             for shard_id in xrange(self.num_shards):
                 shard = self.bucket_instance + ':' + str(shard_id)
 
-                marker, timestamp, retries = client.get_worker_bound(
+                result = client.get_worker_bound(
                             self.sync_work.dest_conn,
                             'bucket-index',
                             shard)
-                bounds.add(shard_id, marker, timestamp, retries)
+
+                bounds.add(shard_id, result['marker'], result['oldest_time'], result['retries'])
 
         return bounds
         
