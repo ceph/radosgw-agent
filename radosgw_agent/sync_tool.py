@@ -6,6 +6,7 @@ import logging.handlers
 import os.path
 import yaml
 import sys
+import json
 
 from radosgw_agent import client
 from radosgw_agent import sync
@@ -239,6 +240,61 @@ class TestHandler(BaseHTTPRequestHandler):
             self.send_response(status)
             self.end_headers()
 
+def append_attr_value(d, attr, attrv):
+    if attrv and len(str(attrv)) > 0:
+        d[attr] = attrv
+
+def append_attr(d, k, attr):
+    try:
+        attrv = getattr(k, attr)
+    except:
+        return
+    append_attr_value(d, attr, attrv)
+
+def get_attrs(k, attrs):
+    d = {}
+    for a in attrs:
+        append_attr(d, k, a)
+
+    return d
+
+class BucketShardBounds:
+    def __init__(self, marker, timestamp, retries):
+        self.marker = marker
+        self.timestamp = timestamp
+        self.retries = retries
+
+class BucketBounds:
+    def __init__(self):
+        self.bounds = {}
+
+    def add(self, shard_id, marker, timestamp, retries):
+        self.bounds[shard_id] = BucketShardBounds(marker, timestamp, retries)
+        
+class BucketShardBoundsJSONEncoder(BucketBounds):
+    @staticmethod
+    def default(k):
+        attrs = ['marker', 'timestamp', 'retries']
+        return get_attrs(k, attrs)
+
+class BucketBoundsJSONEncoder(BucketBounds):
+    @staticmethod
+    def default(k):
+        attrs = ['bounds']
+        return get_attrs(k, attrs)
+
+class SyncToolJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, BucketShardBounds):
+            return BucketShardBoundsJSONEncoder.default(obj)
+        if isinstance(obj, BucketBounds):
+            return BucketBoundsJSONEncoder.default(obj)
+        return json.JSONEncoder.default(self, obj)
+
+def dump_json(o, cls=SyncToolJSONEncoder):
+    return json.dumps(o, cls=cls, indent=4)
+
+
 class SyncToolDataSync:
     def __init__(self, dest_conn, src, worker):
         self.dest_conn = dest_conn
@@ -268,14 +324,14 @@ class Bucket:
         log.debug('num_shards={n}'.format(n=self.num_shards))
 
     def get_bucket_bounds(self, bucket):
-        bounds = []
+        bounds = BucketBounds()
 
         if self.num_shards <= 0:
             marker, timestamp, retries = client.get_worker_bound(
                         self.sync_work.dest_conn,
                         'bucket-index',
                         self.bucket_instance)
-            bounds.append([marker, timestamp, retries])
+            bounds.add(shard_id, marker, timestamp, retries)
         else:
             for shard_id in xrange(self.num_shards):
                 shard = self.bucket_instance + ':' + str(shard_id)
@@ -284,7 +340,7 @@ class Bucket:
                             self.sync_work.dest_conn,
                             'bucket-index',
                             shard)
-                bounds.append([marker, timestamp, retries])
+                bounds.add(shard_id, marker, timestamp, retries)
 
         return bounds
         
@@ -399,8 +455,7 @@ The commands are:
             log.info('status bucket={b}'.format(b=bucket))
 
             bounds = b.get_bucket_bounds(bucket)
-
-            print bounds
+            print dump_json(bounds)
 
     def data_sync(self):
         parser = argparse.ArgumentParser(
