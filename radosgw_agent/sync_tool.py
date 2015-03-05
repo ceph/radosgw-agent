@@ -283,12 +283,27 @@ class BucketBoundsJSONEncoder(BucketBounds):
         attrs = ['bounds']
         return get_attrs(k, attrs)
 
+class OpStateEntry:
+    def __init__(self, entry):
+        self.timestamp = entry['timestamp']
+        self.op_id = entry['op_id']
+        self.object = entry['object']
+        self.state = entry['state']
+
+class OpStateEntryJSONEncoder(OpStateEntry):
+    @staticmethod
+    def default(k):
+        attrs = ['timestamp', 'op_id', 'object', 'state']
+        return get_attrs(k, attrs)
+
 class SyncToolJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, BucketShardBounds):
             return BucketShardBoundsJSONEncoder.default(obj)
         if isinstance(obj, BucketBounds):
             return BucketBoundsJSONEncoder.default(obj)
+        if isinstance(obj, OpStateEntry):
+            return OpStateEntryJSONEncoder.default(obj)
         return json.JSONEncoder.default(self, obj)
 
 def dump_json(o, cls=SyncToolJSONEncoder):
@@ -344,6 +359,21 @@ class Bucket:
 
         return bounds
         
+class Object:
+    def __init__(self, bucket, obj, sync_work):
+        self.sync_work = sync_work
+        self.bucket = bucket
+        self.obj = obj
+
+    def sync(self):
+        self.sync_work.sync_object(self.bucket, self.obj)
+
+    def status(self):
+        opstate_ret = client.get_op_state(self.sync_work.dest_conn, '', '', self.bucket, self.obj)
+        entries = [OpStateEntry(entry) for entry in opstate_ret]
+
+        print dump_json(entries)
+
 
 class SyncToolCommand:
 
@@ -450,12 +480,17 @@ The commands are:
 
         b = Bucket(bucket, self.sync)
          
-
         if len(target) == 1:
             log.info('status bucket={b}'.format(b=bucket))
 
             bounds = b.get_bucket_bounds(bucket)
             print dump_json(bounds)
+        else:
+            obj_name = target[1]
+            obj = Object(bucket, obj_name, self.sync)
+            log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
+
+            obj.status()
 
     def data_sync(self):
         parser = argparse.ArgumentParser(
@@ -473,10 +508,13 @@ The commands are:
         if len(target) == 1:
             log.info('sync bucket={b}'.format(b=bucket))
         else:
-            obj = target[1]
-            log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj))
+            obj_name = target[1]
+            obj = Object(bucket, obj_name, self.sync)
+            log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
 
-            self.sync.sync_object(bucket, obj)
+            ret = obj.sync()
+            if not ret:
+                log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=obj_name))
 
 def main():
 
