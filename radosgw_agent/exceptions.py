@@ -1,11 +1,18 @@
 
-
-class ClientException(Exception):
+class AgentError(Exception):
     """
-    Base radosgw_agent client exception.
+    The actual base exception for the agent
+    """
+
+class ClientException(AgentError):
+    """
+    Historical base radosgw_agent client exception.
     """
     pass
 
+
+class NetworkError(AgentError):
+    pass
 
 class InvalidProtocol(ClientException):
     pass
