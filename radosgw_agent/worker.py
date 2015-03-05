@@ -292,6 +292,11 @@ class DataWorker(Worker):
         metadata = client.get_metadata(self.src_conn, 'bucket', bucket)
         return bucket + ':' + metadata['data']['bucket']['bucket_id']
 
+    def get_bucket_metadata(self, bucket):
+        bucket_instance = self.get_bucket_instance(bucket)
+        metadata = client.get_metadata(self.src_conn, 'bucket.instance', bucket_instance)
+        return bucket_instance, metadata
+
     def get_bucket(self, bucket_instance):
         return bucket_instance.split(':', 1)[0]
 

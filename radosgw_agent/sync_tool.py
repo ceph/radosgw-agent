@@ -240,12 +240,54 @@ class TestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 class SyncToolDataSync:
-    def __init__(self, worker):
+    def __init__(self, dest_conn, src, worker):
+        self.dest_conn = dest_conn
+        self.src = src
         self.worker = worker
 
     def sync_object(self, bucket, obj):
         if not self.worker.sync_object(bucket, obj):
             log.info('failed to sync {b}/{o}'.format(b=bucket, o=obj))
+
+    def get_bucket_instance(self, bucket):
+        return self.worker.get_bucket_instance(bucket)
+
+
+class Bucket:
+    def __init__(self, bucket, sync_work):
+        self.sync_work = sync_work
+        self.bucket = bucket
+        self.bucket_instance, self.meta = sync_work.worker.get_bucket_metadata(bucket)
+
+        self.num_shards = 0
+        try:
+            self.num_shards = self.meta['data']['bucket_info']['num_shards']
+        except:
+            pass
+
+        log.debug('num_shards={n}'.format(n=self.num_shards))
+
+    def get_bucket_bounds(self, bucket):
+        bounds = []
+
+        if self.num_shards <= 0:
+            marker, timestamp, retries = client.get_worker_bound(
+                        self.sync_work.dest_conn,
+                        'bucket-index',
+                        self.bucket_instance)
+            bounds.append([marker, timestamp, retries])
+        else:
+            for shard_id in xrange(self.num_shards):
+                shard = self.bucket_instance + ':' + str(shard_id)
+
+                marker, timestamp, retries = client.get_worker_bound(
+                            self.sync_work.dest_conn,
+                            'bucket-index',
+                            shard)
+                bounds.append([marker, timestamp, retries])
+
+        return bounds
+        
 
 class SyncToolCommand:
 
@@ -316,6 +358,16 @@ The commands are:
         parser.add_argument('command', help='Subcommand to run')
         # parse_args defaults to [1:] for args, but you need to
         # exclude the rest of the args too, or validation will fail
+
+        self.sync = SyncToolDataSync(self.dest_conn, self.src,
+                        worker.DataWorker(None,
+                           None,
+                           20, # log lock timeout
+                           self.src,
+                           self.dest,
+                           daemon_id=self.args.daemon_id,
+                           max_entries=self.args.max_entries,
+                           object_sync_timeout=self.args.object_sync_timeout))
         
         cmd_args = parser.parse_args(self.remaining[0:1])
         if not hasattr(self, cmd_args.command) or cmd_args.command[0] == '_':
@@ -325,6 +377,30 @@ The commands are:
         # use dispatch pattern to invoke method with same name
         ret = getattr(self, cmd_args.command)
         return ret
+
+    def status(self):
+        parser = argparse.ArgumentParser(
+            description='Get sync status of bucket or object',
+            usage='radosgw-sync status <bucket_name>/<key> [<args>]')
+        parser.add_argument('source')
+        args = parser.parse_args(self.remaining[1:])
+
+        target = args.source.split('/', 1)
+
+        assert len(target) > 0
+
+        bucket = target[0]
+
+
+        b = Bucket(bucket, self.sync)
+         
+
+        if len(target) == 1:
+            log.info('status bucket={b}'.format(b=bucket))
+
+            bounds = b.get_bucket_bounds(bucket)
+
+            print bounds
 
     def data_sync(self):
         parser = argparse.ArgumentParser(
@@ -339,22 +415,13 @@ The commands are:
 
         bucket = target[0]
 
-        sync = SyncToolDataSync(worker.DataWorker(None,
-                           None,
-                           20, # log lock timeout
-                           self.src,
-                           self.dest,
-                           daemon_id=self.args.daemon_id,
-                           max_entries=self.args.max_entries,
-                           object_sync_timeout=self.args.object_sync_timeout))
-
         if len(target) == 1:
             log.info('sync bucket={b}'.format(b=bucket))
         else:
             obj = target[1]
             log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj))
 
-            sync.sync_object(bucket, obj)
+            self.sync.sync_object(bucket, obj)
 
 def main():
 
