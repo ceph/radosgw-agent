@@ -87,7 +87,7 @@ def catches(catch=None, handler=None, exit=True, handle_all=False):
 
                 str_failure = traceback.format_exc()
                 for line in str_failure.split('\n'):
-                    logger.error("%s" % line)
+                    logger.error(line)
                 sys.exit(1)
 
         return newfunc
