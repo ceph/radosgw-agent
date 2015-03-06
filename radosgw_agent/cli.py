@@ -283,7 +283,13 @@ def main():
 
     try:
         region_map = client.get_region_map(dest_conn)
+    except AgentError:
+        # anything that we know about and are correctly raising should
+        # just get raised so that the decorator can handle it
+        raise
     except Exception as error:
+        # otherwise, we have the below exception that will nicely deal with
+        # explaining what happened
         raise RegionMapError(error)
 
     client.configure_endpoints(region_map, dest, src, args.metadata_only)
