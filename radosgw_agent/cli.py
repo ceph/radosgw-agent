@@ -8,7 +8,13 @@ import yaml
 import sys
 
 from radosgw_agent import client
+from radosgw_agent import util
+from radosgw_agent.util.decorators import catches
+from radosgw_agent.exceptions import AgentError, RegionMapError
 from radosgw_agent import sync
+
+log = logging.getLogger()
+
 
 def check_positive_int(string):
     value = int(string)
@@ -17,6 +23,7 @@ def check_positive_int(string):
         raise argparse.ArgumentTypeError(msg)
     return value
 
+
 def check_endpoint(endpoint):
     try:
         return client.parse_endpoint(endpoint)
@@ -24,6 +31,7 @@ def check_endpoint(endpoint):
         raise argparse.ArgumentTypeError(str(e))
     except client.InvalidHost as e:
         raise argparse.ArgumentTypeError(str(e))
+
 
 def parse_args():
     conf_parser = argparse.ArgumentParser(add_help=False)
@@ -232,29 +240,37 @@ class TestHandler(BaseHTTPRequestHandler):
             self.send_response(status)
             self.end_headers()
 
+
+@catches((KeyboardInterrupt, RuntimeError, AgentError,), handle_all=True)
 def main():
     args = parse_args()
-    log = logging.getLogger()
-    log_level = logging.INFO
-    lib_log_level = logging.WARN
-    if args.verbose:
-        log_level = logging.DEBUG
-        lib_log_level = logging.DEBUG
-    elif args.quiet:
-        log_level = logging.WARN
-    logging.basicConfig(level=log_level)
-    logging.getLogger('boto').setLevel(lib_log_level)
 
-    if args.log_file is not None:
-        handler = logging.handlers.WatchedFileHandler(
-            filename=args.log_file,
-            )
-        formatter = logging.Formatter(
-            fmt='%(asctime)s.%(msecs)03d %(process)d:%(levelname)s:%(name)s:%(message)s',
-            datefmt='%Y-%m-%dT%H:%M:%S',
-            )
-        handler.setFormatter(formatter)
-        logging.getLogger().addHandler(handler)
+    # root (a.k.a. 'parent') and agent loggers
+    root_logger = logging.getLogger()
+
+    # allow all levels at root_logger, handlers control individual levels
+    root_logger.setLevel(logging.DEBUG)
+
+    # Console handler, meant only for user-facing information
+    console_loglevel = logging.INFO
+    if args.verbose:
+        console_loglevel = logging.DEBUG
+    elif args.quiet:
+        console_loglevel = logging.WARN
+
+    sh = logging.StreamHandler()
+    sh.setFormatter(util.log.color_format())
+    sh.setLevel(console_loglevel)
+
+    # File handler
+    log_file = args.log_file or 'radosgw_agent.log'
+    fh = logging.handlers.WatchedFileHandler(log_file)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter(util.log.BASE_FORMAT))
+
+    root_logger.addHandler(fh)
+    agent_logger = logging.getLogger('radosgw_agent')
+    agent_logger.addHandler(sh)
 
     dest = args.destination
     dest.access_key = args.dest_access_key
@@ -266,15 +282,16 @@ def main():
 
     try:
         region_map = client.get_region_map(dest_conn)
-    except Exception:
-        log.exception('Could not retrieve region map from destination')
-        sys.exit(1)
+    except AgentError:
+        # anything that we know about and are correctly raising should
+        # just get raised so that the decorator can handle it
+        raise
+    except Exception as error:
+        # otherwise, we have the below exception that will nicely deal with
+        # explaining what happened
+        raise RegionMapError(error)
 
-    try:
-        client.configure_endpoints(region_map, dest, src, args.metadata_only)
-    except client.ClientException as e:
-        log.error(e)
-        sys.exit(1)
+    client.configure_endpoints(region_map, dest, src, args.metadata_only)
 
     src.access_key = args.src_access_key
     src.secret_key = args.src_secret_key

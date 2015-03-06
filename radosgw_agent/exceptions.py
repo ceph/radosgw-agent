@@ -1,10 +1,29 @@
 
-
-class ClientException(Exception):
+class AgentError(Exception):
     """
-    Base radosgw_agent client exception.
+    The actual base exception for the agent
+    """
+
+
+class ClientException(AgentError):
+    """
+    Historical base radosgw_agent client exception.
     """
     pass
+
+
+class NetworkError(AgentError):
+    pass
+
+
+class RegionMapError(AgentError):
+
+    def __init__(self, error):
+        self.error = error
+
+    def __str__(self):
+        msg = 'Could not retrieve region map from destination: %s'
+        return msg % self.error
 
 
 class InvalidProtocol(ClientException):
