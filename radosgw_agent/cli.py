@@ -260,7 +260,6 @@ def main():
 
     sh = logging.StreamHandler()
     sh.setFormatter(util.log.color_format())
-    sh.setLevel(logging.WARNING)
     sh.setLevel(console_loglevel)
 
     # File handler
