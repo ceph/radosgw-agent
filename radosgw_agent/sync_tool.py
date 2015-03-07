@@ -311,9 +311,9 @@ def dump_json(o, cls=SyncToolJSONEncoder):
 
 
 class SyncToolDataSync:
-    def __init__(self, dest_conn, src, worker):
+    def __init__(self, dest_conn, src_conn, worker):
         self.dest_conn = dest_conn
-        self.src = src
+        self.src_conn = src_conn
         self.worker = worker
 
     def sync_object(self, bucket, obj):
@@ -325,10 +325,11 @@ class SyncToolDataSync:
 
 
 class Bucket:
-    def __init__(self, bucket, sync_work):
+    def __init__(self, bucket, shard_id, sync_work):
         self.sync_work = sync_work
         self.bucket = bucket
         self.bucket_instance, self.meta = sync_work.worker.get_bucket_metadata(bucket)
+        self.shard_id = shard_id
 
         self.num_shards = 0
         try:
@@ -338,27 +339,41 @@ class Bucket:
 
         log.debug('num_shards={n}'.format(n=self.num_shards))
 
-    def get_bucket_bounds(self, bucket):
+    def iterate_shards(self):
+        if self.num_shards <= 0:
+            yield (-1, self.bucket_instance)
+        elif self.shard_id >= 0:
+            yield (self.shard_id, self.bucket_instance + ':' + str(self.shard_id))
+        else:
+            for x in xrange(self.num_shards):
+                yield (x, self.bucket_instance + ':' + str(x))
+
+    def get_bucket_bounds(self):
         bounds = BucketBounds()
 
-        if self.num_shards <= 0:
-            marker, timestamp, retries = client.get_worker_bound(
+        for (shard_id, instance) in self.iterate_shards():
+            result = client.get_worker_bound(
                         self.sync_work.dest_conn,
                         'bucket-index',
-                        self.bucket_instance)
-            bounds.add(shard_id, marker, timestamp, retries)
-        else:
-            for shard_id in xrange(self.num_shards):
-                shard = self.bucket_instance + ':' + str(shard_id)
+                        instance)
 
-                result = client.get_worker_bound(
-                            self.sync_work.dest_conn,
-                            'bucket-index',
-                            shard)
-
-                bounds.add(shard_id, result['marker'], result['oldest_time'], result['retries'])
+            bounds.add(shard_id, result['marker'], result['oldest_time'], result['retries'])
 
         return bounds
+
+    def get_source_markers(self):
+        markers = {}
+        for (shard_id, instance) in self.iterate_shards():
+            try:
+                marker = client.get_log_info(self.sync_work.src_conn, 'bucket-index',
+                                            instance)['max_marker']
+                log.debug('bucket instance is "%s" with marker %s', self.bucket_instance, marker)
+                markers[shard_id] = marker
+            except:
+                pass
+
+        return markers
+       
         
 class Object:
     def __init__(self, bucket, obj, sync_work):
@@ -435,6 +450,8 @@ class SyncToolCommand:
         self.src.access_key = args.src_access_key
         self.src.secret_key = args.src_secret_key
 
+        self.src_conn = client.connection(self.src)
+
         self.log = log
 
 
@@ -450,7 +467,7 @@ The commands are:
         # parse_args defaults to [1:] for args, but you need to
         # exclude the rest of the args too, or validation will fail
 
-        self.sync = SyncToolDataSync(self.dest_conn, self.src,
+        self.sync = SyncToolDataSync(self.dest_conn, self.src_conn,
                         worker.DataWorker(None,
                            None,
                            20, # log lock timeout
@@ -473,6 +490,7 @@ The commands are:
         parser = argparse.ArgumentParser(
             description='Get sync status of bucket or object',
             usage='radosgw-sync status <bucket_name>/<key> [<args>]')
+        parser.add_argument('--shard-id', type=int, default=-1)
         parser.add_argument('source')
         args = parser.parse_args(self.remaining[1:])
 
@@ -483,13 +501,14 @@ The commands are:
         bucket = target[0]
 
 
-        b = Bucket(bucket, self.sync)
+        b = Bucket(bucket, args.shard_id, self.sync)
          
         if len(target) == 1:
             log.info('status bucket={b}'.format(b=bucket))
 
-            bounds = b.get_bucket_bounds(bucket)
-            print dump_json(bounds)
+            bounds = b.get_bucket_bounds()
+            markers = b.get_source_markers()
+            print dump_json({'source': markers, 'dest': bounds})
         else:
             obj_name = target[1]
             obj = Object(bucket, obj_name, self.sync)
@@ -520,6 +539,25 @@ The commands are:
             ret = obj.sync()
             if ret == False:
                 log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=obj_name))
+
+    def diff(self):
+        parser = argparse.ArgumentParser(
+            description='List buckets',
+            usage='radosgw-sync list')
+        args = parser.parse_args(self.remaining[1:])
+
+        src_buckets = client.get_bucket_list(self.src_conn)
+
+        for b in src_buckets:
+            buck = Bucket(b, -1, self.sync)
+
+            bounds = buck.get_bucket_bounds()
+
+            print dump_json({'bucket': b, 'bounds': bounds})
+
+    def get_bucket_bounds(self, bucket):
+        print dump_json({'src': src_buckets, 'dest': dest_buckets})
+
 
 def main():
 
