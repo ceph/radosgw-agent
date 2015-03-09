@@ -348,14 +348,17 @@ class Bucket:
             for x in xrange(self.num_shards):
                 yield (x, self.bucket_instance + ':' + str(x))
 
+    def get_bound(self, instance):
+        return client.get_worker_bound(
+                        self.sync_work.dest_conn,
+                        'bucket-index',
+                        instance)
+
     def get_bucket_bounds(self):
         bounds = BucketBounds()
 
         for (shard_id, instance) in self.iterate_shards():
-            result = client.get_worker_bound(
-                        self.sync_work.dest_conn,
-                        'bucket-index',
-                        instance)
+            result = self.get_bound(instance)
 
             bounds.add(shard_id, result['marker'], result['oldest_time'], result['retries'])
 
@@ -542,18 +545,27 @@ The commands are:
 
     def diff(self):
         parser = argparse.ArgumentParser(
-            description='List buckets',
-            usage='radosgw-sync list')
+            description='Show buckets with pending modified data',
+            usage='radosgw-sync diff')
+        parser.add_argument('bucket_name', nargs='?')
         args = parser.parse_args(self.remaining[1:])
 
-        src_buckets = client.get_bucket_list(self.src_conn)
+        if not args.bucket_name: 
+            src_buckets = client.get_bucket_list(self.src_conn)
+        else:
+            src_buckets = [args.bucket_name]
 
         for b in src_buckets:
             buck = Bucket(b, -1, self.sync)
 
-            bounds = buck.get_bucket_bounds()
+            markers = buck.get_source_markers()
 
-            print dump_json({'bucket': b, 'bounds': bounds})
+            for (shard_id, instance) in buck.iterate_shards():
+                bound = buck.get_bound(instance)['marker']
+
+                if markers[shard_id] != bound:
+                    print dump_json({'bucket': b, 'shard_id': shard_id, 'marker': markers[shard_id], 'bound': bound})
+
 
     def get_bucket_bounds(self, bucket):
         print dump_json({'src': src_buckets, 'dest': dest_buckets})
