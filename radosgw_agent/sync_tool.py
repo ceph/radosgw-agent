@@ -352,7 +352,8 @@ class Bucket:
         return client.get_worker_bound(
                         self.sync_work.dest_conn,
                         'bucket-index',
-                        instance)
+                        instance,
+                        init_if_not_found=False)
 
     def get_bucket_bounds(self):
         bounds = BucketBounds()
@@ -396,6 +397,36 @@ class Object:
         entries = [OpStateEntry(entry) for entry in opstate_ret]
 
         print dump_json(entries)
+
+class Zone:
+    def __init__(self, sync):
+        self.sync = sync
+
+    def iterate_diff(self, src_buckets):
+        for b in src_buckets:
+            buck = Bucket(b, -1, self.sync)
+
+            markers = buck.get_source_markers()
+
+            for (shard_id, instance) in buck.iterate_shards():
+                try:
+                    bound = buck.get_bound(instance)['marker']
+                except:
+                    bound = None
+
+                try:
+                    marker = markers[shard_id]
+                except:
+                    marker = None
+
+                if markers[shard_id] != bound:
+                    yield b, shard_id, marker, bound
+
+    def iterate_diff_objects(self, bucket, shard_id, marker, bound):
+        if not bound:
+            for obj in client.list_objects_in_bucket(self.sync.src_conn, bucket, shard_id=shard_id):
+                yield obj
+
 
 
 class SyncToolCommand:
@@ -479,6 +510,8 @@ The commands are:
                            daemon_id=self.args.daemon_id,
                            max_entries=self.args.max_entries,
                            object_sync_timeout=self.args.object_sync_timeout))
+
+        self.zone = Zone(self.sync)
         
         cmd_args = parser.parse_args(self.remaining[0:1])
         if not hasattr(self, cmd_args.command) or cmd_args.command[0] == '_':
@@ -555,16 +588,12 @@ The commands are:
         else:
             src_buckets = [args.bucket_name]
 
-        for b in src_buckets:
-            buck = Bucket(b, -1, self.sync)
+        for bucket, shard_id, marker, bound in self.zone.iterate_diff(src_buckets):
+            print dump_json({'bucket': bucket, 'shard_id': shard_id, 'marker': marker, 'bound': bound})
 
-            markers = buck.get_source_markers()
+            for obj in self.zone.iterate_diff_objects(bucket, shard_id, marker, bound):
+                print obj
 
-            for (shard_id, instance) in buck.iterate_shards():
-                bound = buck.get_bound(instance)['marker']
-
-                if markers[shard_id] != bound:
-                    print dump_json({'bucket': b, 'shard_id': shard_id, 'marker': markers[shard_id], 'bound': bound})
 
 
     def get_bucket_bounds(self, bucket):

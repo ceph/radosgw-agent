@@ -209,8 +209,11 @@ def list_objects_in_bucket(connection, bucket_name):
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
     list_call = bucket.list_versions if versioned else bucket.list
+    headers = None
+    if shard_id >= 0:
+        headers = {'Rgwx-Shard-Id': shard_id}
     try:
-        for key in list_call():
+        for key in list_call(headers=headers):
             yield key
     except boto.exception.S3ResponseError as e:
         # since this is a generator, the exception will be raised when
@@ -444,7 +447,7 @@ def del_worker_bound(connection, type_, daemon_id, id_):
         )
 
 
-def get_worker_bound(connection, type_, id_):
+def get_worker_bound(connection, type_, id_, init_if_not_found=True):
     key = _id_name(type_)
     try:
         out = request(
@@ -461,11 +464,14 @@ def get_worker_bound(connection, type_, id_):
                       id_)
         # if no worker bounds have been set, start from the beginning
         # returning fallback, default values
-        return dict(
-            marker=' ',
-            oldest_time=DEFAULT_TIME,
-            retries=[]
-        )
+        if init_if_not_found:
+            return dict(
+                marker=' ',
+                oldest_time=DEFAULT_TIME,
+                retries=[]
+            )
+
+        return None
 
     retries = set()
     for item in out['markers']:
