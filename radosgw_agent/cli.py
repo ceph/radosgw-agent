@@ -262,6 +262,9 @@ def main():
     sh.setFormatter(util.log.color_format())
     sh.setLevel(console_loglevel)
 
+    agent_logger = logging.getLogger('radosgw_agent')
+    agent_logger.addHandler(sh)
+
     # File handler
     log_file = args.log_file or 'radosgw_agent.log'
     fh = logging.handlers.WatchedFileHandler(log_file)
@@ -269,8 +272,6 @@ def main():
     fh.setFormatter(logging.Formatter(util.log.BASE_FORMAT))
 
     root_logger.addHandler(fh)
-    agent_logger = logging.getLogger('radosgw_agent')
-    agent_logger.addHandler(sh)
 
     dest = args.destination
     dest.access_key = args.dest_access_key
