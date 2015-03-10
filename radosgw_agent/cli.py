@@ -266,8 +266,13 @@ def main():
     agent_logger.addHandler(sh)
 
     # File handler
-    log_file = args.log_file or 'radosgw_agent.log'
-    fh = logging.handlers.WatchedFileHandler(log_file)
+    log_file = args.log_file or 'radosgw-agent.log'
+    try:
+        fh = logging.handlers.WatchedFileHandler(log_file)
+    except IOError:
+        # if the location is not present, fallback to cwd
+        fh = logging.handlers.WatchedFileHandler('radosgw-agent.log')
+
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter(util.log.BASE_FORMAT))
 
