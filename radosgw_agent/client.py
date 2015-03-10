@@ -203,9 +203,8 @@ def get_bucket_list(connection):
 
 
 @boto_call
-def list_objects_in_bucket(connection, bucket_name):
+def list_objects_in_bucket(connection, bucket_name, shard_id=-1):
     versioned = config['use_versioning']
-
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
     list_call = bucket.list_versions if versioned else bucket.list

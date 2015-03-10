@@ -407,6 +407,13 @@ class Bucket(object):
             for x in xrange(self.num_shards):
                 yield Shard(self.sync_work, self.bucket, x, self.bucket_instance + ':' + str(x))
 
+    def get_bound(self, instance):
+        return client.get_worker_bound(
+                        self.sync_work.dest_conn,
+                        'bucket-index',
+                        instance,
+                        init_if_not_found=False)
+
     def get_bucket_bounds(self):
         bounds = BucketBounds()
 
@@ -608,6 +615,36 @@ class Object(object):
         entries = [OpStateEntry(entry) for entry in opstate_ret]
 
         print dump_json(entries)
+
+class Zone:
+    def __init__(self, sync):
+        self.sync = sync
+
+    def iterate_diff(self, src_buckets):
+        for b in src_buckets:
+            buck = Bucket(b, -1, self.sync)
+
+            markers = buck.get_source_markers()
+
+            for (shard_id, instance) in buck.iterate_shards():
+                try:
+                    bound = buck.get_bound(instance)['marker']
+                except:
+                    bound = None
+
+                try:
+                    marker = markers[shard_id]
+                except:
+                    marker = None
+
+                if markers[shard_id] != bound:
+                    yield b, shard_id, marker, bound
+
+    def iterate_diff_objects(self, bucket, shard_id, marker, bound):
+        if not bound:
+            for obj in client.list_objects_in_bucket(self.sync.src_conn, bucket, shard_id=shard_id):
+                yield obj
+
 
 
 class Zone(object):
@@ -834,12 +871,6 @@ The commands are:
             for (obj, marker) in si.iterate_diff_objects():
                 print obj, marker
 
-    def bilog(self):
-        parser = argparse.ArgumentParser(
-            description='Show buckets with pending modified data',
-            usage='radosgw-sync diff')
-        parser.add_argument('bucket_name', nargs='?')
-        parser.parse_args(self.remaining[1:])
 
 
     def get_bucket_bounds(self, bucket):
