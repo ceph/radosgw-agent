@@ -269,7 +269,10 @@ def main():
     log_file = args.log_file or 'radosgw-agent.log'
     try:
         fh = logging.handlers.WatchedFileHandler(log_file)
-    except IOError:
+    except IOError as err:
+        agent_logger.warning('unable to use log location: %s' % log_file)
+        agent_logger.warning(err)
+        agent_logger.warning('will fallback to ./radosgw-agent.log')
         # if the location is not present, fallback to cwd
         fh = logging.handlers.WatchedFileHandler('radosgw-agent.log')
 
