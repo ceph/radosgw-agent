@@ -4,6 +4,13 @@ class Configuration(object):
     """
     An immutable dictionary where values set for the first time are allowed and
     existing keys raise a TypeError exception
+
+    Even though there is effort made into making it immutable, a consumer can
+    force its way through by accessing the private `dict` method that contains
+    the values, although it defeats the purpose it is exposed in that way in
+    the event that something needs to change.
+
+    All normal methods and operations should be supported.
     """
 
     def __init__(self):
