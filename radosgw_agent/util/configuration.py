@@ -13,7 +13,12 @@ class Configuration(object):
         return self._dict
 
     def pop(self, key, default=None):
-        self._default_error()
+        try:
+            self._dict[key]
+        except KeyError:
+            raise
+        else:
+            self._default_error()
 
     def popitem(self):
         self._default_error()
@@ -23,6 +28,15 @@ class Configuration(object):
 
     def clear(self):
         self._default_error()
+
+    def values(self):
+        return self._dict.values()
+
+    def keys(self):
+        return self._dict.keys()
+
+    def items(self):
+        return self._dict.items()
 
     def get(self, key, default=None):
         return self._dict.get(key, default)
