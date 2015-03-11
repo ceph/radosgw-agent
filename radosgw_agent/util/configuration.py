@@ -13,8 +13,11 @@ class Configuration(object):
     All normal methods and operations should be supported.
     """
 
-    def __init__(self):
-        self._dict = {}
+    def __init__(self, seed=None):
+        if seed and isinstance(seed, dict):
+            self._dict = seed
+        else:
+            self._dict = {}
 
     def __str__(self):
         return self._dict
@@ -56,7 +59,10 @@ class Configuration(object):
         try:
             self._dict[key]
         except KeyError:
-            self._dict[key] = value
+            if isinstance(value, dict):
+                self._dict[key] = Configuration(value)
+            else:
+                self._dict[key] = value
         else:
             self._default_error()
 
