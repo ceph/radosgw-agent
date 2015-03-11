@@ -225,7 +225,6 @@ def list_objects_in_bucket(connection, bucket_name):
         else:
             raise
 
-
 @boto_call
 def mark_delete_object(connection, bucket_name, obj, params=None):
     """

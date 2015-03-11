@@ -424,7 +424,7 @@ class Zone:
 
     def iterate_diff_objects(self, bucket, shard_id, marker, bound):
         if not bound:
-            for obj in client.list_objects_in_bucket(self.sync.src_conn, bucket, shard_id=shard_id):
+            for obj in client.list_objects_in_shard(self.sync.src_conn, bucket, shard_id=shard_id):
                 yield obj
 
 
@@ -592,8 +592,18 @@ The commands are:
             print dump_json({'bucket': bucket, 'shard_id': shard_id, 'marker': marker, 'bound': bound})
 
             for obj in self.zone.iterate_diff_objects(bucket, shard_id, marker, bound):
-                print obj
+                print obj, obj.RgwxTag
 
+            log_entries = client.get_log(self.src_conn, 'bucket-index',
+                                         marker, self.max_entries, instance)
+
+
+    def bilog(self):
+        parser = argparse.ArgumentParser(
+            description='Show buckets with pending modified data',
+            usage='radosgw-sync diff')
+        parser.add_argument('bucket_name', nargs='?')
+        args = parser.parse_args(self.remaining[1:])
 
 
     def get_bucket_bounds(self, bucket):
