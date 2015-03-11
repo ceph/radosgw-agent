@@ -6,6 +6,11 @@ import logging.handlers
 import os.path
 import yaml
 import sys
+import time
+import base64
+import hmac
+import sha
+import urllib2
 
 from radosgw_agent import client
 from radosgw_agent import util
@@ -187,6 +192,33 @@ def parse_args():
         )
     return parser.parse_args(remaining)
 
+def check_versioning(endpoint):
+    verb = "GET"
+    content_md5 = ""
+    content_type = ""
+    date = time.asctime(time.gmtime())
+    canonical_amz_headers = ""
+    canonical_resource = "/?versions"
+
+    string_to_sign = verb + "\n" +  content_md5 + "\n" +  content_type + "\n" + \
+               date + "\n" + canonical_amz_headers + canonical_resource
+    sig = base64.b64encode(hmac.new(endpoint.secret_key, string_to_sign, sha).digest())
+
+
+    url = str(endpoint) + '/?versions'
+    headers = { 'Authorization' : 'AWS ' + endpoint.access_key + ':' + sig,
+            'Date' : date }
+
+    data = None
+    req = urllib2.Request(url, data, headers)
+    try:
+        response = urllib2.urlopen(req)
+        the_page = response.read()
+        log.info('{e} supports versioning'.format(e=endpoint))
+        return True
+    except:
+        log.info('{e} does not support versioning'.format(e=endpoint))
+
 class TestHandler(BaseHTTPRequestHandler):
     """HTTP handler for testing radosgw-agent.
 
@@ -304,6 +336,8 @@ def main():
 
     src.access_key = args.src_access_key
     src.secret_key = args.src_secret_key
+
+    src_supports_vesioning = check_versioning(src)
 
     if args.test_server_host:
         log.warn('TEST MODE - do not run unless you are testing this program')
