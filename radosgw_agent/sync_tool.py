@@ -384,6 +384,45 @@ class Bucket:
 
         return markers
 
+
+class BILogIter:
+    def __init__(self, shard, marker):
+        self.shard = shard
+        self.marker = marker
+        self.sync_work = shard.sync_work
+
+    def iterate(self, squash = True):
+        max_entries = 1000
+
+        marker = self.marker or ''
+
+        log_entries = client.get_log(self.sync_work.src_conn, 'bucket-index',
+                                     marker, max_entries, self.shard.shard_instance)
+
+        if not squash:
+            for e in log_entries:
+                self.marker = e['object']
+                if e['state'] == 'complete':
+                    yield e
+
+            return
+
+        keys = {}
+        l = []
+        for e in reversed(log_entries):
+            self.marker = e['object']
+            if e['state'] == 'complete':
+                print e['object']
+                instance = e['instance'] or ''
+                key = (e['object'], instance)
+                if keys.get(key) == None:
+                    l.insert(0, e)
+                    keys[key] = True
+
+        for e in l:
+            yield e
+
+        
 class Object:
     def __init__(self, bucket, obj, sync_work):
         self.sync_work = sync_work
@@ -601,12 +640,10 @@ The commands are:
             for obj in self.zone.iterate_diff_objects(bucket, shard.shard_id, marker, bound):
                 print obj, obj.RgwxTag
 
-            log_entries = client.get_log(self.src_conn, 'bucket-index',
-                                         bound, max_entries, shard.shard_instance)
+            li = BILogIter(shard, bound)
 
-            for e in log_entries:
-                if e['state'] == 'complete':
-                    print e
+            for e in li.iterate():
+                print e
 
 
     def bilog(self):
