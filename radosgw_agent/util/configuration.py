@@ -68,3 +68,10 @@ class Configuration(object):
 
     def __getitem__(self, key):
         return self._dict[key]
+
+    def __contains__(self, key):
+        try:
+            self._dict[key]
+            return True
+        except KeyError:
+            return False
