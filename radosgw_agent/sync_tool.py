@@ -324,10 +324,18 @@ class SyncToolDataSync:
         return self.worker.get_bucket_instance(bucket)
 
 class Shard:
-    def __init__(self, sync_work, shard_id, shard_instance):
+    def __init__(self, sync_work, bucket, shard_id, shard_instance):
         self.sync_work = sync_work
+        self.bucket = bucket
         self.shard_id = shard_id
         self.shard_instance = shard_instance
+        try:
+            self.marker = client.get_log_info(self.sync_work.src_conn, 'bucket-index',
+                                              self.shard_instance)['max_marker']
+        except:
+            self.marker = None
+
+        self.bound = self.get_bound()
 
     def get_bound(self):
         return client.get_worker_bound(
@@ -354,12 +362,12 @@ class Bucket:
 
     def iterate_shards(self):
         if self.num_shards <= 0:
-            yield Shard(self.sync_work, -1, self.bucket_instance)
+            yield Shard(self.sync_work, self.bucket, -1, self.bucket_instance)
         elif self.shard_id >= 0:
-            yield Shard(self.sync_work, self.shard_id, self.bucket_instance + ':' + str(self.shard_id))
+            yield Shard(self.sync_work, self.bucket, self.shard_id, self.bucket_instance + ':' + str(self.shard_id))
         else:
             for x in xrange(self.num_shards):
-                yield Shard(self.sync_work, x, self.bucket_instance + ':' + str(x))
+                yield Shard(self.sync_work, self.bucket, x, self.bucket_instance + ':' + str(x))
 
     def get_bucket_bounds(self):
         bounds = BucketBounds()
@@ -374,22 +382,43 @@ class Bucket:
     def get_source_markers(self):
         markers = {}
         for shard in self.iterate_shards():
-            try:
-                marker = client.get_log_info(self.sync_work.src_conn, 'bucket-index',
-                                            shard.shard_instance)['max_marker']
-                log.debug('bucket instance is "%s" with marker %s', self.bucket_instance, marker)
-                markers[shard.shard_id] = marker
-            except:
-                pass
+            markers[shard.shard_id] = shard.marker
 
         return markers
 
+class ObjectKey:
+    def __init__(self, name, instance):
+        self.name = name
+        self.instance = instance
+
+    def __str__(self):
+        return self.name + ':' + self.instance
+
+class ObjectEntry:
+    def __init__(self, obj, instance, versioned_epoch, mtime, tag):
+        self.key = ObjectKey(obj, instance)
+        self.versioned_epoch = versioned_epoch
+        self.mtime = mtime
+        self.tag = tag
+
+    def __str__(self):
+        return self.key.__str__() + ',' + str(self.versioned_epoch) + ',' + self.mtime + ',' + self.tag
 
 class BILogIter:
     def __init__(self, shard, marker):
         self.shard = shard
         self.marker = marker
         self.sync_work = shard.sync_work
+
+    @staticmethod
+    def entry_to_obj(e):
+        versioned_epoch = 0
+        try:
+            if e['versioned']:
+                versioned_epoch = e['ver']['epoch']
+        except:
+            pass
+        return ObjectEntry(e['object'], e['instance'], versioned_epoch, e['timestamp'], e['op_tag'])
 
     def iterate(self, squash = True):
         max_entries = 1000
@@ -403,7 +432,7 @@ class BILogIter:
             for e in log_entries:
                 self.marker = e['object']
                 if e['state'] == 'complete':
-                    yield e
+                    yield BILogIter.entry_to_obj(e)
 
             return
 
@@ -412,15 +441,41 @@ class BILogIter:
         for e in reversed(log_entries):
             self.marker = e['object']
             if e['state'] == 'complete':
-                print e['object']
-                instance = e['instance'] or ''
+                instance = e['instance'] or None
                 key = (e['object'], instance)
                 if keys.get(key) == None:
                     l.insert(0, e)
                     keys[key] = True
 
         for e in l:
+            yield BILogIter.entry_to_obj(e)
+
+class ShardIter:
+    def __init__(self, shard):
+        self.shard = shard
+
+    def iterate_diff_objects(self):
+        start_marker = self.shard.marker
+        if self.shard.bound:
+            bound = self.shard.bound['marker']
+        else:
+            bound = start_marker
+
+            # no bound existing, list all objects
+            for obj in client.list_objects_in_shard(self.shard.sync_work.src_conn, self.shard.bucket, shard_id=self.shard.shard_id):
+                versioned_epoch = ''
+                try:
+                    versioned_epoch = obj['VersionedEpoch']
+                except:
+                    pass
+
+                yield ObjectEntry(obj.name, obj.version_id, versioned_epoch, obj.last_modified, obj.RgwxTag)
+
+        # now continue from where we last stopped
+        li = BILogIter(self.shard, bound)
+        for e in li.iterate():
             yield e
+
 
         
 class Object:
@@ -465,13 +520,6 @@ class Zone:
 
                 if markers[shard.shard_id] != bound:
                     yield b, shard, marker, bound
-
-    def iterate_diff_objects(self, bucket, shard_id, marker, bound):
-        if not bound:
-            for obj in client.list_objects_in_shard(self.sync.src_conn, bucket, shard_id=shard_id):
-                yield obj
-
-
 
 class SyncToolCommand:
 
@@ -637,14 +685,10 @@ The commands are:
         for bucket, shard, marker, bound in self.zone.iterate_diff(src_buckets):
             print dump_json({'bucket': bucket, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
 
-            for obj in self.zone.iterate_diff_objects(bucket, shard.shard_id, marker, bound):
-                print obj, obj.RgwxTag
+            si = ShardIter(shard)
 
-            li = BILogIter(shard, bound)
-
-            for e in li.iterate():
-                print e
-
+            for obj in si.iterate_diff_objects():
+                print obj
 
     def bilog(self):
         parser = argparse.ArgumentParser(

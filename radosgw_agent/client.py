@@ -248,7 +248,6 @@ def mark_delete_object(connection, bucket_name, obj, params=None):
                    params=params,
                    expect_json=False)
 
-
 @boto_call
 def delete_versioned_object(connection, bucket_name, obj):
     """
