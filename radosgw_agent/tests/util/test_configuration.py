@@ -48,3 +48,17 @@ class TestConfiguration(object):
         conf = configuration.Configuration(my_dict)
         with pytest.raises(TypeError):
             conf['a'] = 2
+
+    def test_assign_a_new_key_to_a_dict(self, conf):
+        my_dict = {'a': 1}
+        conf['args'] = my_dict
+        assert conf['args']['a'] == 1
+
+    def test_contains_element(self, conf):
+        exists = False
+        try:
+            if 'key' in conf:
+                exists = True
+        except KeyError:
+            assert False, "dict object should support 'contains' operations"
+        assert exists is False
