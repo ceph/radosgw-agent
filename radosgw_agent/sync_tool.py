@@ -323,6 +323,19 @@ class SyncToolDataSync:
     def get_bucket_instance(self, bucket):
         return self.worker.get_bucket_instance(bucket)
 
+class Shard:
+    def __init__(self, sync_work, shard_id, shard_instance):
+        self.sync_work = sync_work
+        self.shard_id = shard_id
+        self.shard_instance = shard_instance
+
+    def get_bound(self):
+        return client.get_worker_bound(
+                        self.sync_work.dest_conn,
+                        'bucket-index',
+                        self.shard_instance,
+                        init_if_not_found=False)
+
 
 class Bucket:
     def __init__(self, bucket, shard_id, sync_work):
@@ -341,44 +354,36 @@ class Bucket:
 
     def iterate_shards(self):
         if self.num_shards <= 0:
-            yield (-1, self.bucket_instance)
+            yield Shard(self.sync_work, -1, self.bucket_instance)
         elif self.shard_id >= 0:
-            yield (self.shard_id, self.bucket_instance + ':' + str(self.shard_id))
+            yield Shard(self.sync_work, self.shard_id, self.bucket_instance + ':' + str(self.shard_id))
         else:
             for x in xrange(self.num_shards):
-                yield (x, self.bucket_instance + ':' + str(x))
-
-    def get_bound(self, instance):
-        return client.get_worker_bound(
-                        self.sync_work.dest_conn,
-                        'bucket-index',
-                        instance,
-                        init_if_not_found=False)
+                yield Shard(self.sync_work, x, self.bucket_instance + ':' + str(x))
 
     def get_bucket_bounds(self):
         bounds = BucketBounds()
 
-        for (shard_id, instance) in self.iterate_shards():
-            result = self.get_bound(instance)
+        for shard in self.iterate_shards():
+            result = shard.get_bound()
 
-            bounds.add(shard_id, result['marker'], result['oldest_time'], result['retries'])
+            bounds.add(shard.shard_id, result['marker'], result['oldest_time'], result['retries'])
 
         return bounds
 
     def get_source_markers(self):
         markers = {}
-        for (shard_id, instance) in self.iterate_shards():
+        for shard in self.iterate_shards():
             try:
                 marker = client.get_log_info(self.sync_work.src_conn, 'bucket-index',
-                                            instance)['max_marker']
+                                            shard.shard_instance)['max_marker']
                 log.debug('bucket instance is "%s" with marker %s', self.bucket_instance, marker)
-                markers[shard_id] = marker
+                markers[shard.shard_id] = marker
             except:
                 pass
 
         return markers
-       
-        
+
 class Object:
     def __init__(self, bucket, obj, sync_work):
         self.sync_work = sync_work
@@ -408,19 +413,19 @@ class Zone:
 
             markers = buck.get_source_markers()
 
-            for (shard_id, instance) in buck.iterate_shards():
+            for shard in buck.iterate_shards():
                 try:
-                    bound = buck.get_bound(instance)['marker']
+                    bound = shard.get_bound()['marker']
                 except:
                     bound = None
 
                 try:
-                    marker = markers[shard_id]
+                    marker = markers[shard.shard_id]
                 except:
                     marker = None
 
-                if markers[shard_id] != bound:
-                    yield b, shard_id, marker, bound
+                if markers[shard.shard_id] != bound:
+                    yield b, shard, marker, bound
 
     def iterate_diff_objects(self, bucket, shard_id, marker, bound):
         if not bound:
@@ -588,14 +593,20 @@ The commands are:
         else:
             src_buckets = [args.bucket_name]
 
-        for bucket, shard_id, marker, bound in self.zone.iterate_diff(src_buckets):
-            print dump_json({'bucket': bucket, 'shard_id': shard_id, 'marker': marker, 'bound': bound})
+        max_entries = 1000
 
-            for obj in self.zone.iterate_diff_objects(bucket, shard_id, marker, bound):
+        for bucket, shard, marker, bound in self.zone.iterate_diff(src_buckets):
+            print dump_json({'bucket': bucket, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
+
+            for obj in self.zone.iterate_diff_objects(bucket, shard.shard_id, marker, bound):
                 print obj, obj.RgwxTag
 
             log_entries = client.get_log(self.src_conn, 'bucket-index',
-                                         marker, self.max_entries, instance)
+                                         bound, max_entries, shard.shard_instance)
+
+            for e in log_entries:
+                if e['state'] == 'complete':
+                    print e
 
 
     def bilog(self):
