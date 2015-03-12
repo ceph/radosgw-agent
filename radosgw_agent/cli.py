@@ -11,6 +11,7 @@ import base64
 import hmac
 import sha
 import urllib2
+from urllib2 import URLError, HTTPError
 
 from radosgw_agent import client
 from radosgw_agent import util
@@ -197,6 +198,7 @@ def parse_args():
         )
     return parser.parse_args(remaining)
 
+
 def check_versioning(endpoint):
     verb = "GET"
     content_md5 = ""
@@ -209,20 +211,30 @@ def check_versioning(endpoint):
                date + "\n" + canonical_amz_headers + canonical_resource
     sig = base64.b64encode(hmac.new(endpoint.secret_key, string_to_sign, sha).digest())
 
-
     url = str(endpoint) + '/?versions'
-    headers = { 'Authorization' : 'AWS ' + endpoint.access_key + ':' + sig,
-            'Date' : date }
+    headers = {
+        'Authorization': 'AWS ' + endpoint.access_key + ':' + sig,
+        'Date': date
+    }
 
     data = None
     req = urllib2.Request(url, data, headers)
     try:
         response = urllib2.urlopen(req)
-        the_page = response.read()
-        log.info('{e} supports versioning'.format(e=endpoint))
+        response.read()
+        log.debug('%s endpoint supports versioning' % endpoint)
         return True
-    except:
-        log.info('{e} does not support versioning'.format(e=endpoint))
+    except HTTPError as error:
+        if error.code == 403:
+            log.info('%s endpoint does not support versioning' % endpoint)
+            return False
+        log.warning('encountered some issues reaching to endpoint')
+        log.warning(error)
+        return False
+    except URLError as error:
+        log.error("was unable to connect to %s" % url)
+        raise
+
 
 class TestHandler(BaseHTTPRequestHandler):
     """HTTP handler for testing radosgw-agent.
