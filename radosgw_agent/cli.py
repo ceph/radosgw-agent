@@ -11,7 +11,7 @@ from radosgw_agent import client
 from radosgw_agent import util
 from radosgw_agent.util.decorators import catches
 from radosgw_agent.exceptions import AgentError, RegionMapError
-from radosgw_agent import sync
+from radosgw_agent import sync, config
 
 log = logging.getLogger()
 
@@ -246,6 +246,15 @@ class TestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 
+def set_args_to_config(args):
+    """
+    Ensure that the arguments passed in to the CLI are slapped onto the config
+    object so that it can be referenced throghout the agent
+    """
+    if 'args' not in config:
+        config['args'] = args.__dict__
+
+
 @catches((KeyboardInterrupt, RuntimeError, AgentError,), handle_all=True)
 def main():
     args = parse_args()
@@ -285,6 +294,10 @@ def main():
     fh.setFormatter(logging.Formatter(util.log.BASE_FORMAT))
 
     root_logger.addHandler(fh)
+
+    # after loggin is set ensure that the arguments are present in the
+    # config object
+    set_args_to_config(args)
 
     dest = args.destination
     dest.access_key = args.dest_access_key
