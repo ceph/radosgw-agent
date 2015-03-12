@@ -15,6 +15,7 @@ from urllib2 import URLError, HTTPError
 
 from radosgw_agent import client
 from radosgw_agent import util
+from radosgw_agent.util import string
 from radosgw_agent.util.decorators import catches
 from radosgw_agent.exceptions import AgentError, RegionMapError
 from radosgw_agent import sync, config
@@ -199,21 +200,33 @@ def parse_args():
     return parser.parse_args(remaining)
 
 
-def check_versioning(endpoint):
-    verb = "GET"
-    content_md5 = ""
-    content_type = ""
-    date = time.asctime(time.gmtime())
-    canonical_amz_headers = ""
-    canonical_resource = "/?versions"
+def sign_string(
+        secret_key,
+        verb="GET",
+        content_md5="",
+        content_type="",
+        date=None,
+        canonical_amz_headers="",
+        canonical_resource="/?versions"
+        ):
 
-    string_to_sign = verb + "\n" +  content_md5 + "\n" +  content_type + "\n" + \
-               date + "\n" + canonical_amz_headers + canonical_resource
-    sig = base64.b64encode(hmac.new(endpoint.secret_key, string_to_sign, sha).digest())
+    date = date or time.asctime(time.gmtime())
+    to_sign = string.concatenate(verb, content_md5, content_type, date)
+    to_sign = string.concatenate(
+        canonical_amz_headers,
+        canonical_resource,
+        newline=False
+    )
+    return base64.b64encode(hmac.new(secret_key, to_sign, sha).digest())
+
+
+def check_versioning(endpoint):
+    date = time.asctime(time.gmtime())
+    signed_string = sign_string(endpoint.secret_key, date=date)
 
     url = str(endpoint) + '/?versions'
     headers = {
-        'Authorization': 'AWS ' + endpoint.access_key + ':' + sig,
+        'Authorization': 'AWS ' + endpoint.access_key + ':' + signed_string,
         'Date': date
     }
 
@@ -228,7 +241,7 @@ def check_versioning(endpoint):
         if error.code == 403:
             log.info('%s endpoint does not support versioning' % endpoint)
             return False
-        log.warning('encountered some issues reaching to endpoint')
+        log.warning('encountered some issues reaching to endpoint %s' % endpoint)
         log.warning(error)
         return False
     except URLError as error:
