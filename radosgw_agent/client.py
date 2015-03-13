@@ -118,11 +118,12 @@ def request(connection, type_, resource, params=None, headers=None,
     url = '{protocol}://{host}{path}'.format(protocol=request.protocol,
                                              host=request.host,
                                              path=request.path)
-
+    
     request.authorize(connection=connection)
 
     boto.log.debug('url = %r\nparams=%r\nheaders=%r\ndata=%r',
                    url, params, request.headers, data)
+    log.info('%s %s' % (type_.upper(), url))
     try:
         result = aws_request.make_request(
             connection.s3_connection,
