@@ -11,6 +11,7 @@ from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
 
 from radosgw_agent import request as aws_request
+from radosgw_agent import config
 from radosgw_agent import exceptions as exc
 from radosgw_agent.constants import DEFAULT_TIME
 from radosgw_agent.exceptions import NetworkError
@@ -118,7 +119,7 @@ def request(connection, type_, resource, params=None, headers=None,
     url = '{protocol}://{host}{path}'.format(protocol=request.protocol,
                                              host=request.host,
                                              path=request.path)
-    
+
     request.authorize(connection=connection)
 
     boto.log.debug('url = %r\nparams=%r\nheaders=%r\ndata=%r',
@@ -200,7 +201,9 @@ def get_bucket_list(connection):
 
 
 @boto_call
-def list_objects_in_bucket(connection, bucket_name, versioned=False):
+def list_objects_in_bucket(connection, bucket_name):
+    versioned = config['use_versioning']
+
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
     list_call = bucket.list_versions if versioned else bucket.list
