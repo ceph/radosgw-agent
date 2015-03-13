@@ -240,13 +240,12 @@ def check_versioning(endpoint):
     except HTTPError as error:
         if error.code == 403:
             log.info('%s endpoint does not support versioning' % endpoint)
-            return False
-        log.warning('encountered some issues reaching to endpoint %s' % endpoint)
+        log.warning('encountered issues reaching to endpoint %s' % endpoint)
         log.warning(error)
-        return False
     except URLError as error:
         log.error("was unable to connect to %s" % url)
-        raise
+        log.error(error)
+    return False
 
 
 class TestHandler(BaseHTTPRequestHandler):
@@ -355,7 +354,6 @@ def main():
     # after loggin is set ensure that the arguments are present in the
     # config object
     set_args_to_config(args)
-
     dest = args.destination
     dest.access_key = args.dest_access_key
     dest.secret_key = args.dest_secret_key
@@ -380,7 +378,11 @@ def main():
     src.access_key = args.src_access_key
     src.secret_key = args.src_secret_key
 
-    src_supports_vesioning = check_versioning(src)
+    if config['args']['versioned']:
+        log.debug('versioned flag enabled, overriding versioning check')
+        config['use_versioning'] = True
+    else:
+        config['use_versioning'] = check_versioning(src)
 
     if args.test_server_host:
         log.warn('TEST MODE - do not run unless you are testing this program')
