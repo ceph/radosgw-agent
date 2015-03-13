@@ -69,7 +69,7 @@ class Worker(multiprocessing.Process):
             log.warn('error unlocking log, continuing anyway '
                      'since lock will timeout. Traceback:', exc_info=True)
 
-    def set_bound(self, key, marker, retries, type_=None):
+    def set_bound(self, key, marker, retries, timestamp, type_=None):
         # api doesn't allow setting a bound with a blank marker
         if marker:
             if type_ is None:
@@ -81,7 +81,7 @@ class Worker(multiprocessing.Process):
                 client.set_worker_bound(self.dest_conn,
                                         type_,
                                         marker,
-                                        DEFAULT_TIME,
+                                        timestamp,
                                         self.daemon_id,
                                         key,
                                         data=data)
@@ -368,7 +368,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
         bucket = self.get_bucket(instance)
         new_retries = self.sync_bucket(bucket, objects.union(retries))
 
-        result = self.set_bound(instance, max_marker, new_retries,
+        result = self.set_bound(instance, max_marker, new_retries, timestamp,
                                 'bucket-index')
         if new_retries:
             result = RESULT_ERROR
@@ -427,7 +427,7 @@ class DataWorkerFull(DataWorker):
             objects = client.list_objects_in_bucket(self.src_conn, bucket)
             retries = self.sync_bucket(bucket, objects)
 
-            result = self.set_bound(instance, marker, retries, 'bucket-index')
+            result = self.set_bound(instance, marker, retries, DEFAULT_TIME, 'bucket-index')
             return not retries and result == RESULT_SUCCESS
         except BucketEmpty:
             log.debug('no objects in bucket %s', bucket)
