@@ -36,5 +36,5 @@ class TestKeysToAttribute(object):
 
     def test_replace_dashes(self):
         dictionary = {'dashed-word': 1}
-        result = obj.keys_to_attributes(dictionary)
+        result = obj.to_obj(dictionary)
         assert result.dashed_word == 1

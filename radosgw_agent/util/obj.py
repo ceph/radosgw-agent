@@ -22,7 +22,7 @@ def to_dict(_object, **extra_keys):
     return dictified_obj
 
 
-def keys_to_attributes(dictionary, name="BucketEntry"):
+def to_obj(dictionary, name="BucketEntry"):
     """
     Because some objects are dynamic, we are forced to skip namedtuples
     and set the attributes from keys in dictionaries so that accessing them
