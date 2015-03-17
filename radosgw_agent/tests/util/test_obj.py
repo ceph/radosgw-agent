@@ -30,3 +30,11 @@ class TestToDict(object):
         result = obj.to_dict(Empty(), a=1, b=2)
         assert result['a'] == 1
         assert result['b'] == 2
+
+
+class TestKeysToAttribute(object):
+
+    def test_replace_dashes(self):
+        dictionary = {'dashed-word': 1}
+        result = obj.keys_to_attributes(dictionary)
+        assert result.dashed_word == 1
