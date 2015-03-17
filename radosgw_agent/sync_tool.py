@@ -549,6 +549,21 @@ class Zone:
                 if markers[shard.shard_id] != bound:
                     yield b, shard, marker, bound
 
+    def sync_data(self, src_buckets):
+        for bucket, shard, marker, bound in self.iterate_diff(src_buckets):
+            print dump_json({'bucket': bucket, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
+
+            si = ShardIter(shard)
+
+            for obj in si.iterate_diff_objects():
+                obj = Object(bucket, obj, self.sync)
+                log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
+
+                ret = obj.sync()
+                if ret == False:
+                    log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=obj_name))
+
+
 class SyncToolCommand:
 
     def __init__(self):
@@ -681,13 +696,14 @@ The commands are:
 
         target = args.source.split('/', 1)
 
-        assert len(target) > 0
-
-        bucket = target[0]
-
-        if len(target) == 1:
+        if len(target) == 0:
+            self.zone.sync_data(client.get_bucket_list(self.src_conn))
+        elif len(target) == 1:
+            bucket = target[0]
+            self.zone.sync_data([bucket])
             log.info('sync bucket={b}'.format(b=bucket))
         else:
+            bucket = target[0]
             obj_name = target[1]
             obj = Object(bucket, obj_name, self.sync)
             log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
