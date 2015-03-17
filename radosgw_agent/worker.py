@@ -380,7 +380,8 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
                 bucket_instance)
 
             marker = bound['marker']
-            retries = bound['retries']
+            # remap dictionaries to object-like
+            retries = [obj_.to_obj(i) for i in bound['retries']]
             timestamp = bound['oldest_time']
 
             try:
