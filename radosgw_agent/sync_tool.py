@@ -450,16 +450,44 @@ class BILogIter:
         for e in l:
             yield BILogIter.entry_to_obj(e)
 
+def get_value_map(s):
+    attrs = s.split(',')
+
+    m = {}
+
+    for attr in attrs:
+        tv = attr.split('=', 1)
+        if len(tv) == 1:
+            m[tv[0]] = None
+        else:
+            m[tv[0]] = tv[1]
+
+    return m
+
 class ShardIter:
     def __init__(self, shard):
         self.shard = shard
 
     def iterate_diff_objects(self):
         start_marker = self.shard.marker
+        need_to_list = False
+        list_bound = None
+        inc_bound = None
+
         if self.shard.bound:
-            bound = self.shard.bound['marker']
+            s = self.shard.bound.get('marker', '')
+            if s == '':
+                list_bound = ''
+            elif s[0] == '.':
+                list_bound = get_value_map(s[1:]).get('list', None)
+
+            if not list_bound:
+                inc_bound = s
         else:
-            bound = start_marker
+            list_bound = ''
+
+        if list_bound:
+            inc_bound = start_marker
 
             # no bound existing, list all objects
             for obj in client.list_objects_in_shard(self.shard.sync_work.src_conn, self.shard.bucket, shard_id=self.shard.shard_id):
@@ -472,7 +500,7 @@ class ShardIter:
                 yield ObjectEntry(obj.name, obj.version_id, versioned_epoch, obj.last_modified, obj.RgwxTag)
 
         # now continue from where we last stopped
-        li = BILogIter(self.shard, bound)
+        li = BILogIter(self.shard, inc_bound)
         for e in li.iterate():
             yield e
 
