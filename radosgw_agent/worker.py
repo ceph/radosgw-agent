@@ -8,7 +8,7 @@ import time
 
 from radosgw_agent import client
 from radosgw_agent import lock
-from radosgw_agent.util import obj
+from radosgw_agent.util import obj as obj_
 from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
 from radosgw_agent.constants import DEFAULT_TIME, RESULT_SUCCESS, RESULT_ERROR
 
@@ -75,7 +75,7 @@ class Worker(multiprocessing.Process):
                 type_ = self.type
             try:
                 data = [
-                    obj.to_dict(item, time=DEFAULT_TIME) for item in retries
+                    obj_.to_dict(item, time=DEFAULT_TIME) for item in retries
                 ]
                 client.set_worker_bound(self.dest_conn,
                                         type_,
