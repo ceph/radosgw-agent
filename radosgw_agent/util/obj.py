@@ -20,3 +20,23 @@ def to_dict(_object, **extra_keys):
             dictified_obj[k] = v
 
     return dictified_obj
+
+
+def keys_to_attributes(dictionary, name="BucketEntry"):
+    """
+    Because some objects are dynamic, we are forced to skip namedtuples
+    and set the attributes from keys in dictionaries so that accessing them
+    is easier and compatible with code that accesses them as regular objects.
+
+    .. note: dashes are converted to underscores
+    """
+    class Meta(object):
+
+        def __init__(self, **kw):
+            for k, v in kw.items():
+                k = k.replace('-', '_')
+                setattr(self, k, v)
+
+    obj_ = Meta(**dictionary)
+    obj_.__class__.__name__ = name
+    return obj_
