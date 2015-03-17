@@ -7,6 +7,7 @@ import os.path
 import yaml
 import sys
 import json
+import boto
 
 from radosgw_agent import client
 from radosgw_agent import sync
@@ -386,23 +387,14 @@ class Bucket:
 
         return markers
 
-class ObjectKey:
-    def __init__(self, name, instance):
-        self.name = name
-        self.instance = instance
-
-    def __str__(self):
-        return self.name + ':' + self.instance
-
 class ObjectEntry:
-    def __init__(self, obj, instance, versioned_epoch, mtime, tag):
-        self.key = ObjectKey(obj, instance)
-        self.versioned_epoch = versioned_epoch
+    def __init__(self, key, mtime, tag):
+        self.key = key
         self.mtime = mtime
         self.tag = tag
 
     def __str__(self):
-        return self.key.__str__() + ',' + str(self.versioned_epoch) + ',' + self.mtime + ',' + self.tag
+        return self.key.__str__() + ',' + str(self.key.VersionedEpoch) + ',' + self.mtime + ',' + self.tag
 
 class BILogIter:
     def __init__(self, shard, marker):
@@ -418,7 +410,14 @@ class BILogIter:
                 versioned_epoch = e['ver']['epoch']
         except:
             pass
-        return ObjectEntry(e['object'], e['instance'], versioned_epoch, e['timestamp'], e['op_tag'])
+
+        k = boto.s3.key.Key()
+
+        k.name = e['object']
+        k.version_id = e['instance']
+        k.VersionedEpoch = versioned_epoch
+
+        return ObjectEntry(k, e['timestamp'], e['op_tag'])
 
     def iterate(self, squash = True):
         max_entries = 1000
@@ -490,14 +489,8 @@ class ShardIter:
             inc_bound = start_marker
 
             # no bound existing, list all objects
-            for obj in client.list_objects_in_shard(self.shard.sync_work.src_conn, self.shard.bucket, shard_id=self.shard.shard_id):
-                versioned_epoch = ''
-                try:
-                    versioned_epoch = obj['VersionedEpoch']
-                except:
-                    pass
-
-                yield ObjectEntry(obj.name, obj.version_id, versioned_epoch, obj.last_modified, obj.RgwxTag)
+            for obj in client.list_objects_in_bucket(self.shard.sync_work.src_conn, self.shard.bucket, versioned=True, shard_id=self.shard.shard_id):
+                yield ObjectEntry(obj, obj.last_modified, obj.RgwxTag)
 
         # now continue from where we last stopped
         li = BILogIter(self.shard, inc_bound)
@@ -507,20 +500,20 @@ class ShardIter:
 
         
 class Object:
-    def __init__(self, bucket, obj, sync_work):
+    def __init__(self, bucket, obj_entry, sync_work):
         self.sync_work = sync_work
         self.bucket = bucket
-        self.obj = obj
+        self.obj_entry = obj_entry
 
     def sync(self):
         try:
-            self.sync_work.sync_object(self.bucket, self.obj)
+            self.sync_work.sync_object(self.bucket, self.obj_entry.key)
             return True
         except:
             return False
 
     def status(self):
-        opstate_ret = client.get_op_state(self.sync_work.dest_conn, '', '', self.bucket, self.obj)
+        opstate_ret = client.get_op_state(self.sync_work.dest_conn, '', '', self.bucket, self.obj_entry)
         entries = [OpStateEntry(entry) for entry in opstate_ret]
 
         print dump_json(entries)
@@ -557,11 +550,12 @@ class Zone:
 
             for obj in si.iterate_diff_objects():
                 obj = Object(bucket, obj, self.sync)
-                log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
+                entry = obj.obj_entry
+                log.info('sync bucket={b} object={o}'.format(b=bucket, o=entry.key))
 
                 ret = obj.sync()
                 if ret == False:
-                    log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=obj_name))
+                    log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=entry.key))
 
 
 class SyncToolCommand:
