@@ -8,6 +8,7 @@ import yaml
 import sys
 import json
 import boto
+import datetime
 
 from radosgw_agent import client
 from radosgw_agent import sync
@@ -345,6 +346,24 @@ class Shard:
                         self.shard_instance,
                         init_if_not_found=False)
 
+    def set_bound(self, marker, retries, timestamp):
+        try:
+            data = [dict(name=item, time=timestamp) for item in retries]
+            client.set_worker_bound(self.sync_work.dest_conn,
+                                    'bucket-index',
+                                    marker,
+                                    timestamp,
+                                    self.sync_work.worker.daemon_id,
+                                    self.shard_instance,
+                                    data=data)
+        except:
+            log.warn('error setting worker bound for key "%s",'
+                     ' may duplicate some work later. Traceback:', self.shard_instance,
+                      exc_info=True)
+            return False
+
+        return True
+
 
 class Bucket:
     def __init__(self, bucket, shard_id, sync_work):
@@ -432,7 +451,7 @@ class BILogIter:
             for e in log_entries:
                 self.marker = e['object']
                 if e['state'] == 'complete':
-                    yield BILogIter.entry_to_obj(e)
+                    yield (BILogIter.entry_to_obj(e), e.get('op_id'))
 
             return
 
@@ -448,7 +467,7 @@ class BILogIter:
                     keys[key] = True
 
         for e in l:
-            yield BILogIter.entry_to_obj(e)
+            yield (BILogIter.entry_to_obj(e), e.get('op_id'))
 
 def get_value_map(s):
     attrs = s.split(',')
@@ -491,12 +510,13 @@ class ShardIter:
 
             # no bound existing, list all objects
             for obj in client.list_objects_in_bucket(self.shard.sync_work.src_conn, self.shard.bucket, versioned=True, shard_id=self.shard.shard_id):
-                yield ObjectEntry(obj, obj.last_modified, obj.RgwxTag)
+                marker = '.list=' + obj.name + ',inc=',inc_bound
+                yield (ObjectEntry(obj, obj.last_modified, obj.RgwxTag), marker)
 
         # now continue from where we last stopped
         li = BILogIter(self.shard, inc_bound)
-        for e in li.iterate():
-            yield e
+        for (e, marker) in li.iterate():
+            yield (e, marker)
 
 
         
@@ -549,7 +569,11 @@ class Zone:
 
             si = ShardIter(shard)
 
-            for obj in si.iterate_diff_objects():
+            retries = []
+            need_to_set_bound = False
+            marker = ''
+
+            for (obj, marker) in si.iterate_diff_objects():
                 obj = Object(bucket, obj, self.sync)
                 entry = obj.obj_entry
                 log.info('sync bucket={b} object={o}'.format(b=bucket, o=entry.key))
@@ -557,6 +581,16 @@ class Zone:
                 ret = obj.sync()
                 if ret == False:
                     log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=entry.key))
+                    retries.append(entry.key)
+
+                need_to_set_bound = True
+
+            if need_to_set_bound:
+                timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%SZ")
+                ret = shard.set_bound(marker, retries, timestamp)
+                if not ret:
+                    log.info('failed to store state information for bucket {0}'.format(bucket))
+
 
 
 class SyncToolCommand:
@@ -726,8 +760,8 @@ The commands are:
 
             si = ShardIter(shard)
 
-            for obj in si.iterate_diff_objects():
-                print obj
+            for (obj, marker) in si.iterate_diff_objects():
+                print obj, marker
 
     def bilog(self):
         parser = argparse.ArgumentParser(
