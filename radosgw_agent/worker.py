@@ -1,4 +1,5 @@
 from collections import namedtuple
+from itertools import ifilter
 import logging
 import multiprocessing
 import os
@@ -7,6 +8,7 @@ import time
 
 from radosgw_agent import client
 from radosgw_agent import lock
+from radosgw_agent.util import obj as obj_
 from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
 from radosgw_agent.constants import DEFAULT_TIME, RESULT_SUCCESS, RESULT_ERROR
 
@@ -72,7 +74,9 @@ class Worker(multiprocessing.Process):
             if type_ is None:
                 type_ = self.type
             try:
-                data = [dict(name=item, time=DEFAULT_TIME) for item in retries]
+                data = [
+                    obj_.to_dict(item, time=DEFAULT_TIME) for item in retries
+                ]
                 client.set_worker_bound(self.dest_conn,
                                         type_,
                                         marker,
@@ -90,6 +94,7 @@ class Worker(multiprocessing.Process):
 MetadataEntry = namedtuple('MetadataEntry',
                            ['section', 'name', 'marker', 'timestamp'])
 
+
 def _meta_entry_from_json(entry):
     return MetadataEntry(
         entry['section'],
@@ -99,14 +104,68 @@ def _meta_entry_from_json(entry):
         )
 
 BucketIndexEntry = namedtuple('BucketIndexEntry',
-                              ['object', 'marker', 'timestamp'])
+                              [
+                                  'object',
+                                  'marker',
+                                  'timestamp',
+                                  'op',
+                                  'versioned',
+                                  'ver',
+                                  'name',
+                                  # compatibility with boto objects:
+                                  'VersionedEpoch',
+                                  'version_id',
+                              ])
+
+BucketVer = namedtuple('BucketVer',
+        [
+            'epoch',
+            'pool',
+        ])
+
 
 def _bi_entry_from_json(entry):
+    ver = entry.get('ver', {})
+    entry_ver = BucketVer(
+        ver.get('epoch'),
+        ver.get('pool')
+    )
+
+    # compatibility with boto objects:
+    VersionedEpoch = ver.get('epoch')
+    version_id = entry.get('instance', 'null')
+
     return BucketIndexEntry(
         entry['object'],
         entry['op_id'],
         entry['timestamp'],
+        entry.get('op', ''),
+        entry.get('versioned', False),
+        entry_ver,
+        entry['object'],
+        VersionedEpoch,
+        version_id,
         )
+
+
+def filter_versioned_objects(entry):
+    """
+    On incremental sync operations, the log may indicate that 'olh' entries,
+    which should be ignored. So this filter function will check for the
+    different attributes present in an ``entry`` and return only valid ones.
+
+    This should be backwards compatible with older gateways that return log
+    entries that don't support versioning.
+    """
+    # do not attempt filtering on non-versioned entries
+    if not entry.versioned:
+        return entry
+
+    # writes or delete 'op' values should be ignored
+    if entry.op not in ['write', 'delete']:
+        # allowed op states are `link_olh` and `link_olh_del`
+        return entry
+
 
 class IncrementalMixin(object):
     """This defines run() and get_and_process_entries() for incremental sync.
@@ -159,7 +218,7 @@ class DataWorker(Worker):
         self.daemon_id = kwargs['daemon_id']
 
     def sync_object(self, bucket, obj):
-        log.debug('sync_object %s/%s', bucket, obj)
+        log.debug('sync_object %s/%s', bucket, obj.name)
         self.op_id += 1
         local_op_id = self.local_lock_id + ':' +  str(self.op_id)
         found = False
@@ -180,12 +239,12 @@ class DataWorker(Worker):
                 # Since we were trying to delete the object, just return
                 return False
             except Exception:
-                msg = 'could not delete "%s/%s" from secondary' % (bucket, obj)
+                msg = 'could not delete "%s/%s" from secondary' % (bucket, obj.name)
                 log.exception(msg)
                 raise SyncFailed(msg)
         except SyncFailed:
             raise
-        except Exception as e:
+        except Exception:
             log.warn('encountered an exception during sync', exc_info=True)
             # wait for it if the op state is in-progress
             self.wait_for_object(bucket, obj, until, local_op_id)
@@ -240,12 +299,12 @@ class DataWorker(Worker):
         for obj in objects:
             count += 1
             # sync each object
-            log.debug('syncing object "%s/%s"', bucket, obj),
+            log.debug('syncing object "%s/%s"', bucket, obj.name),
             try:
                 self.sync_object(bucket, obj)
             except SyncError as err:
                 log.error('failed to sync object %s/%s: %s',
-                          bucket, obj, err)
+                          bucket, obj.name, err)
                 retry_objs.append(obj)
 
         log.debug('bucket {bucket} has {num_objects} object'.format(
@@ -292,7 +351,11 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
 
     def inc_sync_bucket_instance(self, instance, marker, timestamp, retries):
         max_marker, entries = self.get_bucket_instance_entries(marker, instance)
-        objects = set([entry.object for entry in entries])
+
+        # regardless if entries are versioned, make sure we filter them
+        entries = [i for i in ifilter(filter_versioned_objects, entries)]
+
+        objects = set([entry for entry in entries])
         bucket = self.get_bucket(instance)
         new_retries = self.sync_bucket(bucket, objects.union(retries))
 
@@ -317,7 +380,8 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
                 bucket_instance)
 
             marker = bound['marker']
-            retries = bound['retries']
+            # remap dictionaries to object-like
+            retries = [obj_.to_obj(i) for i in bound['retries']]
             timestamp = bound['oldest_time']
 
             try:
@@ -333,6 +397,7 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
                 new_retries.append(bucket_instance)
 
         return new_retries
+
 
 class DataWorkerFull(DataWorker):
 

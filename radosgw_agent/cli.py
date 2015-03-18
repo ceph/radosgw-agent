@@ -6,12 +6,19 @@ import logging.handlers
 import os.path
 import yaml
 import sys
+import time
+import base64
+import hmac
+import sha
+import urllib2
+from urllib2 import URLError, HTTPError
 
 from radosgw_agent import client
 from radosgw_agent import util
+from radosgw_agent.util import string
 from radosgw_agent.util.decorators import catches
 from radosgw_agent.exceptions import AgentError, RegionMapError
-from radosgw_agent import sync
+from radosgw_agent import sync, config
 
 log = logging.getLogger()
 
@@ -116,6 +123,11 @@ def parse_args():
         help='sync bucket and user metadata, but not bucket contents',
         )
     parser.add_argument(
+        '--versioned',
+        action='store_true',
+        help='indicates that radosgw endpoints have object versioning enabled',
+        )
+    parser.add_argument(
         '--num-workers',
         default=1,
         type=check_positive_int,
@@ -187,6 +199,55 @@ def parse_args():
         )
     return parser.parse_args(remaining)
 
+
+def sign_string(
+        secret_key,
+        verb="GET",
+        content_md5="",
+        content_type="",
+        date=None,
+        canonical_amz_headers="",
+        canonical_resource="/?versions"
+        ):
+
+    date = date or time.asctime(time.gmtime())
+    to_sign = string.concatenate(verb, content_md5, content_type, date)
+    to_sign = string.concatenate(
+        canonical_amz_headers,
+        canonical_resource,
+        newline=False
+    )
+    return base64.b64encode(hmac.new(secret_key, to_sign, sha).digest())
+
+
+def check_versioning(endpoint):
+    date = time.asctime(time.gmtime())
+    signed_string = sign_string(endpoint.secret_key, date=date)
+
+    url = str(endpoint) + '/?versions'
+    headers = {
+        'Authorization': 'AWS ' + endpoint.access_key + ':' + signed_string,
+        'Date': date
+    }
+
+    data = None
+    req = urllib2.Request(url, data, headers)
+    try:
+        response = urllib2.urlopen(req)
+        response.read()
+        log.debug('%s endpoint supports versioning' % endpoint)
+        return True
+    except HTTPError as error:
+        if error.code == 403:
+            log.info('%s endpoint does not support versioning' % endpoint)
+        log.warning('encountered issues reaching to endpoint %s' % endpoint)
+        log.warning(error)
+    except URLError as error:
+        log.error("was unable to connect to %s" % url)
+        log.error(error)
+    return False
+
+
 class TestHandler(BaseHTTPRequestHandler):
     """HTTP handler for testing radosgw-agent.
 
@@ -241,6 +302,15 @@ class TestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 
+def set_args_to_config(args):
+    """
+    Ensure that the arguments passed in to the CLI are slapped onto the config
+    object so that it can be referenced throghout the agent
+    """
+    if 'args' not in config:
+        config['args'] = args.__dict__
+
+
 @catches((KeyboardInterrupt, RuntimeError, AgentError,), handle_all=True)
 def main():
     args = parse_args()
@@ -281,6 +351,9 @@ def main():
 
     root_logger.addHandler(fh)
 
+    # after loggin is set ensure that the arguments are present in the
+    # config object
+    set_args_to_config(args)
     dest = args.destination
     dest.access_key = args.dest_access_key
     dest.secret_key = args.dest_secret_key
@@ -304,6 +377,12 @@ def main():
 
     src.access_key = args.src_access_key
     src.secret_key = args.src_secret_key
+
+    if config['args']['versioned']:
+        log.debug('versioned flag enabled, overriding versioning check')
+        config['use_versioning'] = True
+    else:
+        config['use_versioning'] = check_versioning(src)
 
     if args.test_server_host:
         log.warn('TEST MODE - do not run unless you are testing this program')

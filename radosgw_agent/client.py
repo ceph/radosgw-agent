@@ -11,6 +11,7 @@ from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
 
 from radosgw_agent import request as aws_request
+from radosgw_agent import config
 from radosgw_agent import exceptions as exc
 from radosgw_agent.constants import DEFAULT_TIME
 from radosgw_agent.exceptions import NetworkError
@@ -123,6 +124,7 @@ def request(connection, type_, resource, params=None, headers=None,
 
     boto.log.debug('url = %r\nparams=%r\nheaders=%r\ndata=%r',
                    url, params, request.headers, data)
+    log.info('%s %s' % (type_.upper(), url))
     try:
         result = aws_request.make_request(
             connection.s3_connection,
@@ -177,7 +179,7 @@ def get_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'get', 'admin/opstate',
                    params={
                        'op-id': op_id,
-                       'object': u'{0}/{1}'.format(bucket, obj),
+                       'object': u'{0}/{1}'.format(bucket, obj.name),
                        'client-id': client_id,
                       }
                    )
@@ -187,7 +189,7 @@ def remove_op_state(connection, client_id, op_id, bucket, obj):
     return request(connection, 'delete', 'admin/opstate',
                    params={
                        'op-id': op_id,
-                       'object': u'{0}/{1}'.format(bucket, obj),
+                       'object': u'{0}/{1}'.format(bucket, obj.name),
                        'client-id': client_id,
                       },
                    expect_json=False,
@@ -200,11 +202,14 @@ def get_bucket_list(connection):
 
 @boto_call
 def list_objects_in_bucket(connection, bucket_name):
+    versioned = config['use_versioning']
+
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
+    list_call = bucket.list_versions if versioned else bucket.list
     try:
-        for key in bucket.list():
-            yield key.name
+        for key in list_call():
+            yield key
     except boto.exception.S3ResponseError as e:
         # since this is a generator, the exception will be raised when
         # it's read, rather than when this call returns, so raise a
@@ -217,25 +222,124 @@ def list_objects_in_bucket(connection, bucket_name):
 
 
 @boto_call
-def delete_object(connection, bucket_name, object_name):
-    bucket = connection.get_bucket(bucket_name)
-    bucket.delete_key(object_name)
+def mark_delete_object(connection, bucket_name, obj, params=None):
+    """
+    Marking an object for deletion is only necessary for versioned objects, we
+    should not try these calls for non-versioned ones.
 
+    Usually, only full-sync operations will use this call, incremental should
+    perform actual delete operations with ``delete_versioned_object``
+    """
+    params = params or {}
 
-def sync_object_intra_region(connection, bucket_name, object_name, src_zone,
-                             client_id, op_id):
+    params['rgwx-version-id'] = obj.version_id
+    params['rgwx-versioned-epoch'] = obj.VersionedEpoch
+
     path = u'{bucket}/{object}'.format(
         bucket=bucket_name,
-        object=object_name,
+        object=obj.name,
         )
+
+    return request(connection, 'delete', path,
+                   params=params,
+                   expect_json=False)
+
+
+@boto_call
+def delete_versioned_object(connection, bucket_name, obj):
+    """
+    Perform a delete on a versioned object, the requirements for these types
+    of requests is to be able to pass the ``versionID`` as a query argument
+    """
+    # if obj.delete_marker is False we should not delete this and we shouldn't
+    # have been called, so return without doing anything
+    if getattr(obj, 'delete_marker', False) is False:
+        log.info('obj: %s has `delete_marker=False`, will skip' % obj.name)
+        return
+
+    params = {}
+
+    params['rgwx-version-id'] = obj.version_id
+    params['rgwx-versioned-epoch'] = obj.VersionedEpoch
+    params['versionID'] = obj.version_id
+
+    path = u'{bucket}/{object}'.format(
+        bucket=bucket_name,
+        object=obj.name,
+        )
+
+    return request(connection, 'delete', path,
+                   params=params,
+                   expect_json=False)
+
+
+@boto_call
+def delete_object(connection, bucket_name, obj):
+    if is_versioned(obj):
+        log.debug('performing a delete for versioned obj: %s' % obj.name)
+        delete_versioned_object(connection, bucket_name, obj)
+    else:
+        bucket = connection.get_bucket(bucket_name)
+        bucket.delete_key(obj.name)
+
+
+def is_versioned(obj):
+    """
+    Check if a given object is versioned by inspecting some of its attributes.
+    """
+    # before any heuristic, newer versions of RGW will tell if an obj is
+    # versioned so try that first
+    if hasattr(obj, 'versioned'):
+        return obj.versioned
+
+    if not hasattr(obj, 'VersionedEpoch'):
+        # overly paranoid here, an object that is not versioned should *never*
+        # have a `VersionedEpoch` attribute
+        if getattr(obj, 'version_id', None):
+            if obj.version_id is None:
+                return False
+            return True  # probably will never get here
+        return False
+    return True
+
+
+def sync_object_intra_region(connection, bucket_name, obj, src_zone,
+                             client_id, op_id):
+
+    params = {
+        'rgwx-source-zone': src_zone,
+        'rgwx-client-id': client_id,
+        'rgwx-op-id': op_id,
+    }
+
+    if is_versioned(obj):
+        log.debug('detected obj as versioned: %s' % obj.name)
+        log.debug('obj attributes are:')
+        for k in dir(obj):
+            if not k.startswith('_'):
+                v = getattr(obj, k, None)
+                log.debug('%s.%s = %s' % (obj.name, k, v))
+
+        # set the extra params to support versioned operations
+        params['rgwx-version-id'] = obj.version_id
+        params['rgwx-versioned-epoch'] = obj.VersionedEpoch
+
+        # delete_marker may not exist in the obj
+        if getattr(obj, 'delete_marker', None) is True:
+            log.debug('obj %s has a delete_marker, marking for deletion' % obj.name)
+            # when the object has a delete marker we need to create it with
+            # a delete marker on the destination rather than copying
+            return mark_delete_object(connection, bucket_name, obj, params=params)
+
+    path = u'{bucket}/{object}'.format(
+        bucket=bucket_name,
+        object=obj.name,
+        )
+
     return request(connection, 'put', path,
-                   params={
-                       'rgwx-source-zone': src_zone,
-                       'rgwx-client-id': client_id,
-                       'rgwx-op-id': op_id,
-                       },
+                   params=params,
                    headers={
-                       'x-amz-copy-source': url_safe('%s/%s' % (bucket_name, object_name)),
+                       'x-amz-copy-source': url_safe('%s/%s' % (bucket_name, obj.name)),
                        },
                    expect_json=False)
 
