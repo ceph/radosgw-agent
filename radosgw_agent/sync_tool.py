@@ -376,7 +376,8 @@ class Bucket:
         for shard in self.iterate_shards():
             result = shard.get_bound()
 
-            bounds.add(shard.shard_id, result['marker'], result['oldest_time'], result['retries'])
+            if result:
+                bounds.add(shard.shard_id, result['marker'], result['oldest_time'], result['retries'])
 
         return bounds
 
