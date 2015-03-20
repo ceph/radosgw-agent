@@ -483,38 +483,49 @@ def get_value_map(s):
 
     return m
 
+def get_list_marker(list_pos, inc_pos):
+    return '.' + str({'list': list_pos, 'inc': inc_pos})
+
+def parse_bound_marker(start_marker, bound):
+    list_pos = None
+    inc_pos = None
+    if bound:
+        s = bound.get('marker', '')
+        if s == '':
+            list_pos = ''
+            inc_pos = start_marker
+        elif s[0] == '.':
+            d = get_value_map(s[1:])
+            list_pos = d.get('list', None)
+            inc_pos = d.get('inc', None)
+        else:
+            inc_pos = s
+    else:
+        list_pos = ''
+        inc_pos = start_marker
+
+    return (list_pos, inc_pos)
+
 class ShardIter:
     def __init__(self, shard):
         self.shard = shard
 
     def iterate_diff_objects(self):
         start_marker = self.shard.marker
-        need_to_list = False
-        list_bound = None
-        inc_bound = None
 
-        if self.shard.bound:
-            s = self.shard.bound.get('marker', '')
-            if s == '':
-                list_bound = ''
-            elif s[0] == '.':
-                list_bound = get_value_map(s[1:]).get('list', None)
+        (list_pos, inc_pos) = parse_bound_marker(start_marker, self.shard.bound)
 
-            if not list_bound:
-                inc_bound = s
-        else:
-            list_bound = ''
+        print 'start marker=', get_list_marker(list_pos, inc_pos)
+        # print 'start timestamp=',
 
-        if list_bound:
-            inc_bound = start_marker
-
+        if list_pos is not None:
             # no bound existing, list all objects
             for obj in client.list_objects_in_bucket(self.shard.sync_work.src_conn, self.shard.bucket, versioned=True, shard_id=self.shard.shard_id):
-                marker = '.list=' + obj.name + ',inc=',inc_bound
+                marker = get_list_marker(obj.name, inc_pos)
                 yield (ObjectEntry(obj, obj.last_modified, obj.RgwxTag), marker)
 
         # now continue from where we last stopped
-        li = BILogIter(self.shard, inc_bound)
+        li = BILogIter(self.shard, inc_pos)
         for (e, marker) in li.iterate():
             yield (e, marker)
 
@@ -578,6 +589,8 @@ class Zone:
                 entry = obj.obj_entry
                 log.info('sync bucket={b} object={o}'.format(b=bucket, o=entry.key))
 
+                print 'sync obj={o}, marker={m}'.format(o=entry.key, m=marker)
+
                 ret = obj.sync()
                 if ret == False:
                     log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=entry.key))
@@ -587,6 +600,7 @@ class Zone:
 
             if need_to_set_bound:
                 timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%SZ")
+                print 'set_bound marker=', marker, 'timestamp=', timestamp
                 ret = shard.set_bound(marker, retries, timestamp)
                 if not ret:
                     log.info('failed to store state information for bucket {0}'.format(bucket))
