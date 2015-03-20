@@ -410,6 +410,8 @@ class Bucket:
 class ObjectEntry:
     def __init__(self, key, mtime, tag):
         self.key = key
+        if not hasattr(self.key, 'VersionedEpoch'):
+            self.key.VersionedEpoch = 0
         self.mtime = mtime
         self.tag = tag
 
