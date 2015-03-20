@@ -517,19 +517,53 @@ class ShardIter:
 
         (list_pos, inc_pos) = parse_bound_marker(start_marker, self.shard.bound)
 
-        print 'start marker=', get_list_marker(list_pos, inc_pos)
+        print 'marker=', get_list_marker(list_pos, inc_pos)
         # print 'start timestamp=',
 
         if list_pos is not None:
             # no bound existing, list all objects
             for obj in client.list_objects_in_bucket(self.shard.sync_work.src_conn, self.shard.bucket, versioned=True, shard_id=self.shard.shard_id):
                 marker = get_list_marker(obj.name, inc_pos)
+                print 'marker=', marker
                 yield (ObjectEntry(obj, obj.last_modified, obj.RgwxTag), marker)
 
         # now continue from where we last stopped
         li = BILogIter(self.shard, inc_pos)
         for (e, marker) in li.iterate():
+            print 'marker=', marker
             yield (e, marker)
+
+    def sync_objs(self, sync, bucket, max_entries):
+        retries = []
+        need_to_set_bound = False
+        marker = ''
+
+        count = 0
+
+        for (obj, marker) in self.iterate_diff_objects():
+            obj = Object(bucket, obj, sync)
+            entry = obj.obj_entry
+            log.info('sync bucket={b} object={o}'.format(b=bucket, o=entry.key))
+
+            print 'sync obj={o}, marker={m}'.format(o=entry.key, m=marker)
+
+            ret = obj.sync()
+            if ret == False:
+                log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=entry.key))
+                retries.append(entry.key)
+
+            need_to_set_bound = True
+            count += 1
+            if max_entries > 0 and count == max_entries:
+                break
+            yield
+
+        if need_to_set_bound:
+            timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%SZ")
+            print 'set_bound marker=', marker, 'timestamp=', timestamp
+            ret = self.shard.set_bound(marker, retries, timestamp)
+            if not ret:
+                log.info('failed to store state information for bucket {0}'.format(bucket))
 
 
         
@@ -574,38 +608,42 @@ class Zone:
                     marker = None
 
                 if markers[shard.shard_id] != bound:
-                    yield b, shard, marker, bound
+                    yield b, buck.bucket_instance, shard, marker, bound
 
     def sync_data(self, src_buckets):
-        for bucket, shard, marker, bound in self.iterate_diff(src_buckets):
-            print dump_json({'bucket': bucket, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
+        gens = {}
 
-            si = ShardIter(shard)
+        objs_per_bucket = 10
+        concurrent_buckets = 2
 
-            retries = []
-            need_to_set_bound = False
-            marker = ''
+        while True:
+            for bucket, bucket_id, shard, marker, bound in self.iterate_diff(src_buckets):
+                print dump_json({'bucket': bucket, 'bucket_id': bucket_id, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
 
-            for (obj, marker) in si.iterate_diff_objects():
-                obj = Object(bucket, obj, self.sync)
-                entry = obj.obj_entry
-                log.info('sync bucket={b} object={o}'.format(b=bucket, o=entry.key))
+                si = ShardIter(shard)
 
-                print 'sync obj={o}, marker={m}'.format(o=entry.key, m=marker)
+                bucket_shard_id = bucket_id + ':' + str(shard.shard_id)
 
-                ret = obj.sync()
-                if ret == False:
-                    log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=entry.key))
-                    retries.append(entry.key)
+                if not bucket_shard_id in gens:
+                    gens[bucket_shard_id] = si.sync_objs(self.sync, bucket, objs_per_bucket)
 
-                need_to_set_bound = True
+                print 'shard_id', shard.shard_id, 'len(gens)', len(gens)
 
-            if need_to_set_bound:
-                timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%SZ")
-                print 'set_bound marker=', marker, 'timestamp=', timestamp
-                ret = shard.set_bound(marker, retries, timestamp)
-                if not ret:
-                    log.info('failed to store state information for bucket {0}'.format(bucket))
+                while True:
+                    rm = []
+                    for (s, gen) in gens.iteritems():
+                        try:
+                            gen.next()
+                        except StopIteration:
+                            print 'StopIteration:', s
+                            rm.append(s)
+
+                    for s in rm:
+                        del gens[s]
+
+                    if len(gens) < concurrent_buckets:
+                        break
+
 
 
 
@@ -771,8 +809,8 @@ The commands are:
 
         max_entries = 1000
 
-        for bucket, shard, marker, bound in self.zone.iterate_diff(src_buckets):
-            print dump_json({'bucket': bucket, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
+        for bucket, bucket_id, shard, marker, bound in self.zone.iterate_diff(src_buckets):
+            print dump_json({'bucket': bucket, 'bucket_id': bucket_id, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
 
             si = ShardIter(shard)
 
