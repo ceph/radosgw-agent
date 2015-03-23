@@ -13,6 +13,7 @@ import sha
 import urllib2
 from urllib2 import URLError, HTTPError
 
+import radosgw_agent
 from radosgw_agent import client
 from radosgw_agent import util
 from radosgw_agent.util import string
@@ -20,7 +21,7 @@ from radosgw_agent.util.decorators import catches
 from radosgw_agent.exceptions import AgentError, RegionMapError, InvalidProtocol
 from radosgw_agent import sync, config
 
-log = logging.getLogger()
+log = logging.getLogger('radosgw_agent')
 
 
 def check_positive_int(string):
@@ -311,6 +312,41 @@ def set_args_to_config(args):
         config['args'] = args.__dict__
 
 
+def log_header():
+    version = radosgw_agent.__version__
+    lines = [
+        ' __            __           __   ___      ___ ',
+        '/__` \ / |\ | /  `     /\  / _` |__  |\ |  |  ',
+        '.__/  |  | \| \__,    /~~\ \__> |___ | \|  |  ',
+        '                                     v%s' % version,
+    ]
+    for line in lines:
+        log.info(line)
+    log.info('agent options:')
+
+    secrets = [
+        'src_secret_key', 'dest_secret_key',
+        'src_access_key', 'dest_access_key',
+    ]
+
+    def log_dict(k, _dict, level=1):
+        padding = ' ' * level
+        log.info('%s%s:' % (padding, k))
+        for key, value in sorted(_dict.items()):
+            if hasattr(value, '_dict'):
+                level += 1
+                return log_dict(key, value, level)
+            if key in secrets:
+                value = '*' * 16
+            log.info('%s%-30s: %s' % (padding+'  ', key, value))
+
+    for k, v in config.items():
+        if hasattr(v, '_dict'):
+            log_dict(k, v)
+        else:
+            log.info(' %-30s: %s' % (k, v))
+
+
 @catches((KeyboardInterrupt, RuntimeError, AgentError,), handle_all=True)
 def main():
     # root (a.k.a. 'parent') and agent loggers
@@ -362,6 +398,8 @@ def main():
     # after loggin is set ensure that the arguments are present in the
     # config object
     set_args_to_config(args)
+
+    log_header()
     dest = args.destination
     dest.access_key = args.dest_access_key
     dest.secret_key = args.dest_secret_key
