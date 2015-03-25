@@ -1,6 +1,26 @@
 import logging
 import sys
 
+
+def get_dev_logger(name='dev.radosgw_agent'):
+    """
+    A simple utility to be able to log things that are meant for developer-eyes
+    and not for user facing.
+
+    All developer logs must be prepended with `dev` so this utility ensures
+    that is the case. To use it::
+
+        dev_log = get_dev_logger(__name__)
+
+    Or::
+
+        dev_log = get_dev_logger('dev.custom_name')
+    """
+    if not name.startswith('dev'):
+        return logging.getLogger('%s.%s' % ('dev', name))
+    return logging.getLogger(name)
+
+
 BLACK, RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE = range(8)
 
 COLORS = {
