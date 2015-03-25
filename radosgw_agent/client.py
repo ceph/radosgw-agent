@@ -124,7 +124,7 @@ def request(connection, type_, resource, params=None, headers=None,
 
     boto.log.debug('url = %r\nparams=%r\nheaders=%r\ndata=%r',
                    url, params, request.headers, data)
-    log.info('%s %s' % (type_.upper(), url))
+
     try:
         result = aws_request.make_request(
             connection.s3_connection,
@@ -630,4 +630,5 @@ class S3ConnectionWrapper(object):
 
 
 def connection(endpoint, debug=None):
+    log.info('creating connection to endpoint: %s' % endpoint)
     return S3ConnectionWrapper(endpoint, debug)
