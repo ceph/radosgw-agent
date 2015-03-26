@@ -17,7 +17,7 @@ from radosgw_agent import client
 from radosgw_agent import util
 from radosgw_agent.util import string
 from radosgw_agent.util.decorators import catches
-from radosgw_agent.exceptions import AgentError, RegionMapError
+from radosgw_agent.exceptions import AgentError, RegionMapError, InvalidProtocol
 from radosgw_agent import sync, config
 
 log = logging.getLogger()
@@ -34,7 +34,7 @@ def check_positive_int(string):
 def check_endpoint(endpoint):
     try:
         return client.parse_endpoint(endpoint)
-    except client.InvalidProtocol as e:
+    except InvalidProtocol as e:
         raise argparse.ArgumentTypeError(str(e))
     except client.InvalidHost as e:
         raise argparse.ArgumentTypeError(str(e))
