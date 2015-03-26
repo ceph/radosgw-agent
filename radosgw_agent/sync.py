@@ -250,6 +250,7 @@ class DataSyncerFull(Syncer):
         self.rgw_data_log_window = kwargs.get('rgw_data_log_window', 30)
 
     def prepare(self):
+        log.info('preparing to do a full data sync')
         self.init_num_shards()
 
         # save data log markers for each shard
@@ -264,6 +265,7 @@ class DataSyncerFull(Syncer):
 
         # get list of buckets after getting any markers to avoid skipping
         # entries added before we got the marker info
+        log.debug('getting bucket list')
         buckets = client.get_bucket_list(self.src_conn)
 
         self.prepared_at = time.time()
