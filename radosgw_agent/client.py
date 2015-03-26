@@ -338,6 +338,8 @@ def sync_object_intra_region(connection, bucket_name, obj, src_zone,
         object=obj.name,
         )
 
+    params['rgwx-copy-if-newer'] = 'true'
+
     return request(connection, 'put', path,
                    params=params,
                    headers={

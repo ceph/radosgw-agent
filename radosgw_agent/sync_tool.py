@@ -13,6 +13,7 @@ import datetime
 from radosgw_agent import client
 from radosgw_agent import sync
 from radosgw_agent import worker
+from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
 
 
 log = logging.getLogger(__name__)
@@ -382,13 +383,36 @@ class Shard(object):
 
         return True
 
+class BucketMeta:
+    def init(self, worker, bucket):
+        self.worker = worker
+        self.bucket_instance = self.get_bucket_instance(bucket)
+        self.metadata = client.get_metadata(self.src_conn, 'bucket.instance', bucket_instance)
+
+    def get_bucket_metadata(self):
+        bucket_instance = self.get_bucket_instance(bucket)
+        metadata = client.get_metadata(self.src_conn, 'bucket.instance', bucket_instance)
+        return bucket_instance, metadata
+
+def meta_ver(meta):
+    try:
+        return meta['ver']['tag'] + ':' + meta['ver']['ver']
+    except:
+        return ''
 
 class Bucket(object):
     def __init__(self, bucket, shard_id, sync_work):
         self.sync_work = sync_work
         self.bucket = bucket
-        self.bucket_instance, self.meta = sync_work.worker.get_bucket_metadata(bucket)
+        self.bucket_instance =  self.get_bucket_instance(bucket)
+        self.meta = self.get_bucket_instance_metadata(self.sync_work.src_conn, self.bucket_instance)
         self.shard_id = shard_id
+
+        try:
+            target_meta = self.get_bucket_instance_metadata(self.sync_work.dest_conn, self.bucket_instance)
+            self.need_sync_meta = meta_ver(self.meta) != meta_ver(target_meta)
+        except NotFound:
+            self.need_sync_meta = True
 
         self.num_shards = 0
         try:
@@ -397,6 +421,21 @@ class Bucket(object):
             pass
 
         log.debug('num_shards={n}'.format(n=self.num_shards))
+
+    def get_bucket_instance(self, bucket):
+        metadata = client.get_metadata(self.sync_work.src_conn, 'bucket', bucket)
+        return bucket + ':' + metadata['data']['bucket']['bucket_id']
+
+    def get_bucket_instance_metadata(self, conn, bucket_instance):
+        metadata = client.get_metadata(conn, 'bucket.instance', bucket_instance)
+        return metadata
+
+    def sync_meta(self):
+        client.update_metadata(self.sync_work.dest_conn, 'bucket.instance', self.bucket_instance, self.meta)
+
+    def init_sync(self):
+        if self.need_sync_meta:
+            self.sync_meta()
 
     def iterate_shards(self):
         if self.num_shards <= 0:
@@ -669,7 +708,7 @@ class Zone(object):
                     marker = None
 
                 if markers[shard.shard_id] != bound:
-                    yield b, buck.bucket_instance, shard, marker, bound
+                    yield buck, buck.bucket_instance, shard, marker, bound
 
     def sync_data(self, src_buckets):
         gens = {}
@@ -679,14 +718,16 @@ class Zone(object):
 
         while True:
             for bucket, bucket_id, shard, marker, bound in self.iterate_diff(src_buckets):
-                print dump_json({'bucket': bucket, 'bucket_id': bucket_id, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
+                print dump_json({'bucket': bucket.bucket, 'bucket_id': bucket_id, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
 
                 si = ShardIter(shard)
 
                 bucket_shard_id = bucket_id + ':' + str(shard.shard_id)
 
+                bucket.sync_meta()
+
                 if bucket_shard_id not in gens:
-                    gens[bucket_shard_id] = si.sync_objs(self.sync, bucket, objs_per_bucket)
+                    gens[bucket_shard_id] = si.sync_objs(self.sync, bucket.bucket, objs_per_bucket)
 
                 print 'shard_id', shard.shard_id, 'len(gens)', len(gens)
 
@@ -864,7 +905,7 @@ The commands are:
             src_buckets = [args.bucket_name]
 
         for bucket, bucket_id, shard, marker, bound in self.zone.iterate_diff(src_buckets):
-            print dump_json({'bucket': bucket, 'bucket_id': bucket_id, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
+            print dump_json({'bucket': bucket.bucket, 'bucket_id': bucket_id, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
 
             si = ShardIter(shard)
 
