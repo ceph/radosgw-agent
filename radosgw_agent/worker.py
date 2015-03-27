@@ -293,25 +293,29 @@ class DataWorker(Worker):
         return bucket_instance.split(':', 1)[0]
 
     def sync_bucket(self, bucket, objects):
+        log.info('*'*80)
         log.info('syncing bucket "%s"', bucket)
         retry_objs = []
         count = 0
+        left = len(objects)
+        log.info('objects to sync: %s' % len(objects))
         for obj in objects:
             count += 1
+            left -= 1
             # sync each object
-            log.debug('syncing object "%s/%s"', bucket, obj.name),
+            log.info('syncing object "%s/%s"', bucket, obj.name),
+            log.info('%s objects left to sync in bucket (%s)' % (left, bucket))
             try:
                 self.sync_object(bucket, obj)
             except SyncError as err:
                 log.error('failed to sync object %s/%s: %s',
                           bucket, obj.name, err)
+                log.warning(
+                    'will retry sync of failed object at next incremental sync'
+                )
                 retry_objs.append(obj)
-
-        log.debug('bucket {bucket} has {num_objects} object'.format(
-                  bucket=bucket, num_objects=count))
-        if retry_objs:
-            log.debug('these objects failed to be synced and will be during '
-                      'the next incremental sync: %s', retry_objs)
+        log.info('completed syncing bucket "%s"', bucket)
+        log.info('*'*80)
 
         return retry_objs
 
