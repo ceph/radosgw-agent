@@ -313,8 +313,6 @@ def set_args_to_config(args):
 
 @catches((KeyboardInterrupt, RuntimeError, AgentError,), handle_all=True)
 def main():
-    args = parse_args()
-
     # root (a.k.a. 'parent') and agent loggers
     root_logger = logging.getLogger()
 
@@ -323,17 +321,18 @@ def main():
 
     # Console handler, meant only for user-facing information
     console_loglevel = logging.INFO
-    if args.verbose:
-        console_loglevel = logging.DEBUG
-    elif args.quiet:
-        console_loglevel = logging.WARN
 
     sh = logging.StreamHandler()
     sh.setFormatter(util.log.color_format())
+    # this console level set here before reading options from the arguments
+    # so that we can get errors if they pop up before
     sh.setLevel(console_loglevel)
 
     agent_logger = logging.getLogger('radosgw_agent')
     agent_logger.addHandler(sh)
+
+    # After initial logging is configured, now parse args
+    args = parse_args()
 
     # File handler
     log_file = args.log_file or 'radosgw-agent.log'
@@ -350,6 +349,15 @@ def main():
     fh.setFormatter(logging.Formatter(util.log.BASE_FORMAT))
 
     root_logger.addHandler(fh)
+
+    if args.verbose:
+        console_loglevel = logging.DEBUG
+    elif args.quiet:
+        console_loglevel = logging.WARN
+
+    # now that we have parsed the actual log level we need
+    # reset it in the handler
+    sh.setLevel(console_loglevel)
 
     # after loggin is set ensure that the arguments are present in the
     # config object
