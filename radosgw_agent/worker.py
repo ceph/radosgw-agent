@@ -297,16 +297,12 @@ class DataWorker(Worker):
         log.info('syncing bucket "%s"', bucket)
         retry_objs = []
         count = 0
-        left = len(objects)
-        log.info('objects to sync: %s' % len(objects))
         for obj in objects:
-            count += 1
-            left -= 1
             # sync each object
-            log.info('syncing object "%s/%s"', bucket, obj.name),
-            log.info('%s objects left to sync in bucket (%s)' % (left, bucket))
+            log.info('syncing object "%s/%s"', bucket, obj.name)
             try:
                 self.sync_object(bucket, obj)
+                count += 1
             except SyncError as err:
                 log.error('failed to sync object %s/%s: %s',
                           bucket, obj.name, err)
@@ -314,6 +310,7 @@ class DataWorker(Worker):
                     'will retry sync of failed object at next incremental sync'
                 )
                 retry_objs.append(obj)
+        log.info('synced %s objects' % count)
         log.info('completed syncing bucket "%s"', bucket)
         log.info('*'*80)
 
