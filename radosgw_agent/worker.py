@@ -453,8 +453,10 @@ class DataWorkerFull(DataWorker):
             self.unlock_shard()
             self.result_queue.put((RESULT_SUCCESS, (shard_num, retry_buckets)))
             log.info('finished syncing shard %d', shard_num)
-            log.info('incremental sync will need to retry buckets: %s',
-                     retry_buckets)
+            if retry_buckets:
+                log.info('incremental sync will need to retry buckets: %s',
+                         retry_buckets)
+
 
 class MetadataWorker(Worker):
 
