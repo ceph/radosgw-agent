@@ -13,10 +13,12 @@ from boto.s3.connection import S3Connection
 from radosgw_agent import request as aws_request
 from radosgw_agent import config
 from radosgw_agent import exceptions as exc
+from radosgw_agent.util import get_dev_logger
 from radosgw_agent.constants import DEFAULT_TIME
 from radosgw_agent.exceptions import NetworkError
 
 log = logging.getLogger(__name__)
+dev_log = get_dev_logger(__name__)
 
 
 class Endpoint(object):
@@ -453,10 +455,10 @@ def get_worker_bound(connection, type_, id_):
                 },
             special_first_param='bounds',
             )
-        boto.log.debug('get_worker_bound returned: %r', out)
+        dev_log.debug('get_worker_bound returned: %r', out)
     except exc.NotFound:
-        log.debug('no worker bound found for bucket instance "%s"',
-                  id_)
+        dev_log.debug('no worker bound found for bucket instance "%s"',
+                      id_)
         # if no worker bounds have been set, start from the beginning
         # returning fallback, default values
         return dict(
