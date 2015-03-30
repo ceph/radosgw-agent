@@ -232,7 +232,7 @@ class DataWorker(Worker):
             found = True
         except NotFound:
             log.debug('"%s/%s" not found on master, deleting from secondary',
-                      bucket, obj)
+                      bucket, obj.name)
             try:
                 client.delete_object(self.dest_conn, bucket, obj)
             except NotFound:
