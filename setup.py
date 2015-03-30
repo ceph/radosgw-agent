@@ -1,6 +1,11 @@
-#!/usr/bin/python
 from setuptools import setup, find_packages
 import sys
+import re
+
+
+module_file = open("radosgw_agent/__init__.py").read()
+metadata = dict(
+    re.findall(r"__([a-z]+)__\s*=\s*['\"]([^'\"]*)['\"]", module_file))
 
 
 install_requires = []
@@ -10,7 +15,7 @@ if pyversion < (2, 7) or (3, 0) <= pyversion <= (3, 1):
 
 setup(
     name='radosgw-agent',
-    version='1.2.1',
+    version=metadata['version'],
     packages=find_packages(),
 
     author='Josh Durgin',

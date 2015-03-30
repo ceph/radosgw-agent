@@ -8,11 +8,12 @@ import time
 
 from radosgw_agent import client
 from radosgw_agent import lock
-from radosgw_agent.util import obj as obj_
+from radosgw_agent.util import obj as obj_, get_dev_logger
 from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
 from radosgw_agent.constants import DEFAULT_TIME, RESULT_SUCCESS, RESULT_ERROR
 
 log = logging.getLogger(__name__)
+dev_log = get_dev_logger(__name__)
 
 
 class Worker(multiprocessing.Process):
@@ -179,7 +180,7 @@ class IncrementalMixin(object):
         while True:
             item = self.work_queue.get()
             if item is None:
-                log.info('process %s is done. Exiting', self.ident)
+                dev_log.info('process %s is done. Exiting', self.ident)
                 break
 
             shard_num, (log_entries, retries) = item
@@ -218,7 +219,7 @@ class DataWorker(Worker):
         self.daemon_id = kwargs['daemon_id']
 
     def sync_object(self, bucket, obj):
-        log.debug('sync_object %s/%s', bucket, obj.name)
+        log.debug('syncing object %s/%s', bucket, obj.name)
         self.op_id += 1
         local_op_id = self.local_lock_id + ':' +  str(self.op_id)
         found = False
@@ -231,8 +232,8 @@ class DataWorker(Worker):
                                             local_op_id)
             found = True
         except NotFound:
-            log.debug('"%s/%s" not found on master, deleting from secondary',
-                      bucket, obj)
+            log.debug('object "%s/%s" not found on master, deleting from secondary',
+                      bucket, obj.name)
             try:
                 client.delete_object(self.dest_conn, bucket, obj)
             except NotFound:
@@ -244,8 +245,10 @@ class DataWorker(Worker):
                 raise SyncFailed(msg)
         except SyncFailed:
             raise
-        except Exception:
-            log.warn('encountered an exception during sync', exc_info=True)
+        except Exception as error:
+            msg = 'encountered an error during sync'
+            dev_log.warn(msg, exc_info=True)
+            log.warning('%s: %s' % (msg, error))
             # wait for it if the op state is in-progress
             self.wait_for_object(bucket, obj, until, local_op_id)
         # TODO: clean up old op states
@@ -293,25 +296,24 @@ class DataWorker(Worker):
         return bucket_instance.split(':', 1)[0]
 
     def sync_bucket(self, bucket, objects):
+        log.info('*'*80)
         log.info('syncing bucket "%s"', bucket)
         retry_objs = []
         count = 0
         for obj in objects:
-            count += 1
-            # sync each object
-            log.debug('syncing object "%s/%s"', bucket, obj.name),
             try:
                 self.sync_object(bucket, obj)
+                count += 1
             except SyncError as err:
                 log.error('failed to sync object %s/%s: %s',
                           bucket, obj.name, err)
+                log.warning(
+                    'will retry sync of failed object at next incremental sync'
+                )
                 retry_objs.append(obj)
-
-        log.debug('bucket {bucket} has {num_objects} object'.format(
-                  bucket=bucket, num_objects=count))
-        if retry_objs:
-            log.debug('these objects failed to be synced and will be during '
-                      'the next incremental sync: %s', retry_objs)
+        log.info('synced %s objects' % count)
+        log.info('completed syncing bucket "%s"', bucket)
+        log.info('*'*80)
 
         return retry_objs
 
@@ -451,8 +453,10 @@ class DataWorkerFull(DataWorker):
             self.unlock_shard()
             self.result_queue.put((RESULT_SUCCESS, (shard_num, retry_buckets)))
             log.info('finished syncing shard %d', shard_num)
-            log.info('incremental sync will need to retry buckets: %s',
-                     retry_buckets)
+            if retry_buckets:
+                log.info('incremental sync will need to retry buckets: %s',
+                         retry_buckets)
+
 
 class MetadataWorker(Worker):
 

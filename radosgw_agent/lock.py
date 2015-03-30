@@ -3,17 +3,23 @@ import threading
 import time
 
 from radosgw_agent import client
+from radosgw_agent.util import get_dev_logger
 
 log = logging.getLogger(__name__)
+dev_log = get_dev_logger(__name__)
+
 
 class LockBroken(Exception):
     pass
 
+
 class LockRenewFailed(LockBroken):
     pass
 
+
 class LockExpired(LockBroken):
     pass
+
 
 class Lock(threading.Thread):
     """A lock on a shard log that automatically refreshes itself.
@@ -39,7 +45,7 @@ class Lock(threading.Thread):
         self.failed = False
 
     def set_shard(self, shard_num):
-        log.debug('set_shard to %d', shard_num)
+        dev_log.debug('set_shard to %d', shard_num)
         with self.lock:
             assert self.shard_num is None, \
                 'attempted to acquire new lock without releasing old one'
@@ -48,7 +54,7 @@ class Lock(threading.Thread):
             self.shard_num = shard_num
 
     def unset_shard(self):
-        log.debug('unset shard')
+        dev_log.debug('unset shard')
         with self.lock:
             self.shard_num = None
 
@@ -58,7 +64,7 @@ class Lock(threading.Thread):
         The old lock must have already been released if shard_num is specified.
         client.NotFound may be raised if the log contains no entries.
         """
-        log.debug('acquire lock')
+        dev_log.debug('acquire lock')
         with self.lock:
             self._acquire()
 
@@ -76,7 +82,7 @@ class Lock(threading.Thread):
         were any errors renewing the current lock or if it expired.
         If the lock was not sustained, raise LockAcquireFailed or LockExpired.
         """
-        log.debug('release and clear lock')
+        dev_log.debug('release and clear lock')
         with self.lock:
             shard_num = self.shard_num
             self.shard_num = None

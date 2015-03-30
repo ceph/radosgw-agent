@@ -20,7 +20,7 @@ class Configuration(object):
             self._dict = {}
 
     def __str__(self):
-        return self._dict
+        return str(self._dict)
 
     def pop(self, key, default=None):
         try:

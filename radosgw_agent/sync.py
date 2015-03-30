@@ -4,10 +4,12 @@ import time
 
 from radosgw_agent import worker
 from radosgw_agent import client
+from radosgw_agent.util import get_dev_logger
 from radosgw_agent.exceptions import NotFound, HttpError
 
 
 log = logging.getLogger(__name__)
+dev_log = get_dev_logger(__name__)
 
 # the replica log api only supports one entry, and updating it
 # requires sending a daemon id that matches the existing one. This
@@ -179,9 +181,9 @@ class IncrementalSyncer(Syncer):
         marker = bound['marker']
         retries = bound['retries']
 
-        log.debug('oldest marker and time for shard %d are: %r %r',
-                  shard_num, marker, bound['oldest_time'])
-        log.debug('%d items to retrie are: %r', len(retries), retries)
+        dev_log.debug('oldest marker and time for shard %d are: %r %r',
+                      shard_num, marker, bound['oldest_time'])
+        dev_log.debug('%d items to retry are: %r', len(retries), retries)
 
         return marker, retries
 
@@ -250,6 +252,7 @@ class DataSyncerFull(Syncer):
         self.rgw_data_log_window = kwargs.get('rgw_data_log_window', 30)
 
     def prepare(self):
+        log.info('preparing to do a full data sync')
         self.init_num_shards()
 
         # save data log markers for each shard
@@ -264,6 +267,7 @@ class DataSyncerFull(Syncer):
 
         # get list of buckets after getting any markers to avoid skipping
         # entries added before we got the marker info
+        log.debug('getting bucket list')
         buckets = client.get_bucket_list(self.src_conn)
 
         self.prepared_at = time.time()
