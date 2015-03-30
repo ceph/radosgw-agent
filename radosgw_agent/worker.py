@@ -219,7 +219,7 @@ class DataWorker(Worker):
         self.daemon_id = kwargs['daemon_id']
 
     def sync_object(self, bucket, obj):
-        log.debug('sync_object %s/%s', bucket, obj.name)
+        log.debug('syncing object %s/%s', bucket, obj.name)
         self.op_id += 1
         local_op_id = self.local_lock_id + ':' +  str(self.op_id)
         found = False
@@ -232,7 +232,7 @@ class DataWorker(Worker):
                                             local_op_id)
             found = True
         except NotFound:
-            log.debug('"%s/%s" not found on master, deleting from secondary',
+            log.debug('object "%s/%s" not found on master, deleting from secondary',
                       bucket, obj.name)
             try:
                 client.delete_object(self.dest_conn, bucket, obj)
@@ -245,8 +245,10 @@ class DataWorker(Worker):
                 raise SyncFailed(msg)
         except SyncFailed:
             raise
-        except Exception:
-            log.warn('encountered an exception during sync', exc_info=True)
+        except Exception as error:
+            msg = 'encountered an error during sync'
+            dev_log.warn(msg, exc_info=True)
+            log.warning('%s: %s' % (msg, error))
             # wait for it if the op state is in-progress
             self.wait_for_object(bucket, obj, until, local_op_id)
         # TODO: clean up old op states
@@ -299,8 +301,6 @@ class DataWorker(Worker):
         retry_objs = []
         count = 0
         for obj in objects:
-            # sync each object
-            log.info('syncing object "%s/%s"', bucket, obj.name)
             try:
                 self.sync_object(bucket, obj)
                 count += 1
