@@ -8,11 +8,12 @@ import time
 
 from radosgw_agent import client
 from radosgw_agent import lock
-from radosgw_agent.util import obj as obj_
+from radosgw_agent.util import obj as obj_, get_dev_logger
 from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
 from radosgw_agent.constants import DEFAULT_TIME, RESULT_SUCCESS, RESULT_ERROR
 
 log = logging.getLogger(__name__)
+dev_log = get_dev_logger(__name__)
 
 
 class Worker(multiprocessing.Process):
@@ -179,7 +180,7 @@ class IncrementalMixin(object):
         while True:
             item = self.work_queue.get()
             if item is None:
-                log.info('process %s is done. Exiting', self.ident)
+                dev_log.info('process %s is done. Exiting', self.ident)
                 break
 
             shard_num, (log_entries, retries) = item
