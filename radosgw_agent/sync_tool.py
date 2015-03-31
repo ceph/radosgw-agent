@@ -263,13 +263,13 @@ def get_attrs(k, attrs):
 
     return d
 
-class BucketShardBounds:
+class BucketShardBounds(object):
     def __init__(self, marker, timestamp, retries):
         self.marker = marker
         self.timestamp = timestamp
         self.retries = retries
 
-class BucketBounds:
+class BucketBounds(object):
     def __init__(self):
         self.bounds = {}
 
@@ -288,7 +288,7 @@ class BucketBoundsJSONEncoder(BucketBounds):
         attrs = ['bounds']
         return get_attrs(k, attrs)
 
-class OpStateEntry:
+class OpStateEntry(object):
     def __init__(self, entry):
         self.timestamp = entry['timestamp']
         self.op_id = entry['op_id']
@@ -315,7 +315,7 @@ def dump_json(o, cls=SyncToolJSONEncoder):
     return json.dumps(o, cls=cls, indent=4)
 
 
-class SyncToolDataSync:
+class SyncToolDataSync(object):
     def __init__(self, dest_conn, src_conn, worker):
         self.dest_conn = dest_conn
         self.src_conn = src_conn
@@ -328,7 +328,7 @@ class SyncToolDataSync:
     def get_bucket_instance(self, bucket):
         return self.worker.get_bucket_instance(bucket)
 
-class Shard:
+class Shard(object):
     def __init__(self, sync_work, bucket, shard_id, shard_instance):
         self.sync_work = sync_work
         self.bucket = bucket
@@ -368,7 +368,7 @@ class Shard:
         return True
 
 
-class Bucket:
+class Bucket(object):
     def __init__(self, bucket, shard_id, sync_work):
         self.sync_work = sync_work
         self.bucket = bucket
@@ -410,7 +410,7 @@ class Bucket:
 
         return markers
 
-class ObjectEntry:
+class ObjectEntry(object):
     def __init__(self, key, mtime, tag):
         self.key = key
         if not hasattr(self.key, 'VersionedEpoch'):
@@ -421,7 +421,7 @@ class ObjectEntry:
     def __str__(self):
         return self.key.__str__() + ',' + str(self.key.VersionedEpoch) + ',' + self.mtime + ',' + self.tag
 
-class BILogIter:
+class BILogIter(object):
     def __init__(self, shard, marker):
         self.shard = shard
         self.marker = marker
@@ -511,7 +511,7 @@ def parse_bound_marker(start_marker, bound):
 
     return (list_pos, inc_pos)
 
-class ShardIter:
+class ShardIter(object):
     def __init__(self, shard):
         self.shard = shard
 
@@ -570,7 +570,7 @@ class ShardIter:
 
 
 
-class Object:
+class Object(object):
     def __init__(self, bucket, obj_entry, sync_work):
         self.sync_work = sync_work
         self.bucket = bucket
@@ -589,7 +589,7 @@ class Object:
 
         print dump_json(entries)
 
-class Zone:
+class Zone(object):
     def __init__(self, sync):
         self.sync = sync
 
@@ -648,7 +648,7 @@ class Zone:
                         break
 
 
-class SyncToolCommand:
+class SyncToolCommand(object):
 
     def __init__(self):
         args, self.remaining = parse_args()
