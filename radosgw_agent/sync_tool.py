@@ -792,7 +792,7 @@ The commands are:
             log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
 
             ret = obj.sync()
-            if ret == False:
+            if ret is False:
                 log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=obj_name))
 
     def diff(self):
