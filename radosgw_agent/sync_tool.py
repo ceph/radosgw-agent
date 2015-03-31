@@ -820,7 +820,7 @@ The commands are:
             description='Show buckets with pending modified data',
             usage='radosgw-sync diff')
         parser.add_argument('bucket_name', nargs='?')
-        args = parser.parse_args(self.remaining[1:])
+        parser.parse_args(self.remaining[1:])
 
 
     def get_bucket_bounds(self, bucket):
