@@ -15,6 +15,9 @@ from radosgw_agent import sync
 from radosgw_agent import worker
 
 
+log = logging.getLogger(__name__)
+
+
 def check_positive_int(string):
     value = int(string)
     if value < 1:
@@ -645,13 +648,9 @@ class Zone:
                         break
 
 
-
-
 class SyncToolCommand:
 
     def __init__(self):
-        global log
-
         args, self.remaining = parse_args()
 
         self.args = args
