@@ -25,6 +25,7 @@ def check_positive_int(string):
         raise argparse.ArgumentTypeError(msg)
     return value
 
+
 def check_endpoint(endpoint):
     try:
         return client.parse_endpoint(endpoint)
@@ -32,6 +33,7 @@ def check_endpoint(endpoint):
         raise argparse.ArgumentTypeError(str(e))
     except client.InvalidHost as e:
         raise argparse.ArgumentTypeError(str(e))
+
 
 def parse_args():
     conf_parser = argparse.ArgumentParser(add_help=False)
@@ -192,6 +194,7 @@ def parse_args():
         )
     return parser.parse_known_args(remaining)
 
+
 class TestHandler(BaseHTTPRequestHandler):
     """HTTP handler for testing radosgw-agent.
 
@@ -245,9 +248,11 @@ class TestHandler(BaseHTTPRequestHandler):
             self.send_response(status)
             self.end_headers()
 
+
 def append_attr_value(d, attr, attrv):
     if attrv and len(str(attrv)) > 0:
         d[attr] = attrv
+
 
 def append_attr(d, k, attr):
     try:
@@ -256,6 +261,7 @@ def append_attr(d, k, attr):
         return
     append_attr_value(d, attr, attrv)
 
+
 def get_attrs(k, attrs):
     d = {}
     for a in attrs:
@@ -263,11 +269,13 @@ def get_attrs(k, attrs):
 
     return d
 
+
 class BucketShardBounds(object):
     def __init__(self, marker, timestamp, retries):
         self.marker = marker
         self.timestamp = timestamp
         self.retries = retries
+
 
 class BucketBounds(object):
     def __init__(self):
@@ -276,17 +284,20 @@ class BucketBounds(object):
     def add(self, shard_id, marker, timestamp, retries):
         self.bounds[shard_id] = BucketShardBounds(marker, timestamp, retries)
 
+
 class BucketShardBoundsJSONEncoder(BucketBounds):
     @staticmethod
     def default(k):
         attrs = ['marker', 'timestamp', 'retries']
         return get_attrs(k, attrs)
 
+
 class BucketBoundsJSONEncoder(BucketBounds):
     @staticmethod
     def default(k):
         attrs = ['bounds']
         return get_attrs(k, attrs)
+
 
 class OpStateEntry(object):
     def __init__(self, entry):
@@ -295,11 +306,13 @@ class OpStateEntry(object):
         self.object = entry['object']
         self.state = entry['state']
 
+
 class OpStateEntryJSONEncoder(OpStateEntry):
     @staticmethod
     def default(k):
         attrs = ['timestamp', 'op_id', 'object', 'state']
         return get_attrs(k, attrs)
+
 
 class SyncToolJSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -310,6 +323,7 @@ class SyncToolJSONEncoder(json.JSONEncoder):
         if isinstance(obj, OpStateEntry):
             return OpStateEntryJSONEncoder.default(obj)
         return json.JSONEncoder.default(self, obj)
+
 
 def dump_json(o, cls=SyncToolJSONEncoder):
     return json.dumps(o, cls=cls, indent=4)
@@ -327,6 +341,7 @@ class SyncToolDataSync(object):
 
     def get_bucket_instance(self, bucket):
         return self.worker.get_bucket_instance(bucket)
+
 
 class Shard(object):
     def __init__(self, sync_work, bucket, shard_id, shard_instance):
@@ -410,6 +425,7 @@ class Bucket(object):
 
         return markers
 
+
 class ObjectEntry(object):
     def __init__(self, key, mtime, tag):
         self.key = key
@@ -420,6 +436,7 @@ class ObjectEntry(object):
 
     def __str__(self):
         return self.key.__str__() + ',' + str(self.key.VersionedEpoch) + ',' + self.mtime + ',' + self.tag
+
 
 class BILogIter(object):
     def __init__(self, shard, marker):
@@ -474,6 +491,7 @@ class BILogIter(object):
         for e in l:
             yield (BILogIter.entry_to_obj(e), e.get('op_id'))
 
+
 def get_value_map(s):
     attrs = s.split(',')
 
@@ -488,8 +506,10 @@ def get_value_map(s):
 
     return m
 
+
 def get_list_marker(list_pos, inc_pos):
     return '.' + str({'list': list_pos, 'inc': inc_pos})
+
 
 def parse_bound_marker(start_marker, bound):
     list_pos = None
@@ -510,6 +530,7 @@ def parse_bound_marker(start_marker, bound):
         inc_pos = start_marker
 
     return (list_pos, inc_pos)
+
 
 class ShardIter(object):
     def __init__(self, shard):
@@ -569,7 +590,6 @@ class ShardIter(object):
                 log.info('failed to store state information for bucket {0}'.format(bucket))
 
 
-
 class Object(object):
     def __init__(self, bucket, obj_entry, sync_work):
         self.sync_work = sync_work
@@ -588,6 +608,7 @@ class Object(object):
         entries = [OpStateEntry(entry) for entry in opstate_ret]
 
         print dump_json(entries)
+
 
 class Zone(object):
     def __init__(self, sync):
@@ -704,7 +725,6 @@ class SyncToolCommand(object):
         self.src_conn = client.connection(self.src)
 
         self.log = log
-
 
     def _parse(self):
         parser = argparse.ArgumentParser(
