@@ -9,12 +9,19 @@ import sys
 import json
 import boto
 import datetime
+import time
+import base64
+import hmac
+import sha
+import urllib2
+from urllib2 import URLError, HTTPError
 
 from radosgw_agent import client
 from radosgw_agent import sync
+from radosgw_agent import config
 from radosgw_agent import worker
+from radosgw_agent.util import string
 from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
-
 
 log = logging.getLogger(__name__)
 
@@ -194,6 +201,63 @@ def parse_args():
         help=argparse.SUPPRESS,
         )
     return parser.parse_known_args(remaining)
+
+
+def sign_string(
+        secret_key,
+        verb="GET",
+        content_md5="",
+        content_type="",
+        date=None,
+        canonical_amz_headers="",
+        canonical_resource="/?versions"
+        ):
+
+    date = date or time.asctime(time.gmtime())
+    to_sign = string.concatenate(verb, content_md5, content_type, date)
+    to_sign = string.concatenate(
+        canonical_amz_headers,
+        canonical_resource,
+        newline=False
+    )
+    return base64.b64encode(hmac.new(secret_key, to_sign, sha).digest())
+
+
+def check_versioning(endpoint):
+    date = time.asctime(time.gmtime())
+    signed_string = sign_string(endpoint.secret_key, date=date)
+
+    url = str(endpoint) + '/?versions'
+    headers = {
+        'Authorization': 'AWS ' + endpoint.access_key + ':' + signed_string,
+        'Date': date
+    }
+
+    data = None
+    req = urllib2.Request(url, data, headers)
+    try:
+        response = urllib2.urlopen(req)
+        response.read()
+        log.debug('%s endpoint supports versioning' % endpoint)
+        return True
+    except HTTPError as error:
+        if error.code == 403:
+            log.info('%s endpoint does not support versioning' % endpoint)
+        log.warning('encountered issues reaching to endpoint %s' % endpoint)
+        log.warning(error)
+    except URLError as error:
+        log.error("was unable to connect to %s" % url)
+        log.error(error)
+    return False
+
+
+def set_args_to_config(args):
+    """
+    Ensure that the arguments passed in to the CLI are slapped onto the config
+    object so that it can be referenced throghout the agent
+    """
+    if 'args' not in config:
+        config['args'] = args.__dict__
 
 
 class TestHandler(BaseHTTPRequestHandler):
@@ -592,7 +656,7 @@ class ShardIter(object):
 
         if list_pos is not None:
             # no bound existing, list all objects
-            for obj in client.list_objects_in_bucket(self.shard.sync_work.src_conn, self.shard.bucket, versioned=True, shard_id=self.shard.shard_id):
+            for obj in client.list_objects_in_bucket(self.shard.sync_work.src_conn, self.shard.bucket, shard_id=self.shard.shard_id):
                 marker = get_list_marker(obj.name, inc_pos)
                 print 'marker=', marker
                 yield (ObjectEntry(obj, obj.last_modified, obj.RgwxTag), marker)
@@ -747,6 +811,7 @@ class Zone(object):
                         break
 
 
+
 class SyncToolCommand(object):
 
     def __init__(self):
@@ -777,6 +842,8 @@ class SyncToolCommand(object):
             handler.setFormatter(formatter)
             logging.getLogger().addHandler(handler)
 
+        set_args_to_config(args)
+
         self.dest = args.destination
         self.dest.access_key = args.dest_access_key
         self.dest.secret_key = args.dest_secret_key
@@ -803,6 +870,12 @@ class SyncToolCommand(object):
         self.src_conn = client.connection(self.src)
 
         self.log = log
+
+        if config['args'].get('versioned'):
+            log.debug('versioned flag enabled, overriding versioning check')
+            config['use_versioning'] = True
+        else:
+            config['use_versioning'] = check_versioning(self.src)
 
     def _parse(self):
         parser = argparse.ArgumentParser(
