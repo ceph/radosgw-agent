@@ -521,8 +521,8 @@ def parse_bound_marker(start_marker, bound):
             inc_pos = start_marker
         elif s[0] == '.':
             d = get_value_map(s[1:])
-            list_pos = d.get('list', None)
-            inc_pos = d.get('inc', None)
+            list_pos = d.get('list')
+            inc_pos = d.get('inc')
         else:
             inc_pos = s
     else:
