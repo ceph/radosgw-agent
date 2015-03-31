@@ -548,7 +548,7 @@ class ShardIter:
             print 'sync obj={o}, marker={m}'.format(o=entry.key, m=marker)
 
             ret = obj.sync()
-            if ret == False:
+            if ret is False:
                 log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=entry.key))
                 retries.append(entry.key)
 
