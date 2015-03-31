@@ -1,4 +1,4 @@
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+from BaseHTTPServer import BaseHTTPRequestHandler
 import argparse
 import contextlib
 import logging
@@ -272,7 +272,7 @@ class BucketBounds:
 
     def add(self, shard_id, marker, timestamp, retries):
         self.bounds[shard_id] = BucketShardBounds(marker, timestamp, retries)
-        
+
 class BucketShardBoundsJSONEncoder(BucketBounds):
     @staticmethod
     def default(k):
@@ -566,7 +566,7 @@ class ShardIter:
                 log.info('failed to store state information for bucket {0}'.format(bucket))
 
 
-        
+
 class Object:
     def __init__(self, bucket, obj_entry, sync_work):
         self.sync_work = sync_work
@@ -730,7 +730,7 @@ The commands are:
                            object_sync_timeout=self.args.object_sync_timeout))
 
         self.zone = Zone(self.sync)
-        
+
         cmd_args = parser.parse_args(self.remaining[0:1])
         if not hasattr(self, cmd_args.command) or cmd_args.command[0] == '_':
             print 'Unrecognized command:', cmd_args.command
@@ -756,7 +756,7 @@ The commands are:
 
 
         b = Bucket(bucket, args.shard_id, self.sync)
-         
+
         if len(target) == 1:
             log.info('status bucket={b}'.format(b=bucket))
 
@@ -802,7 +802,7 @@ The commands are:
         parser.add_argument('bucket_name', nargs='?')
         args = parser.parse_args(self.remaining[1:])
 
-        if not args.bucket_name: 
+        if not args.bucket_name:
             src_buckets = client.get_bucket_list(self.src_conn)
         else:
             src_buckets = [args.bucket_name]
