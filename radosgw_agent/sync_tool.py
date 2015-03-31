@@ -648,7 +648,7 @@ class Zone(object):
 
                 bucket_shard_id = bucket_id + ':' + str(shard.shard_id)
 
-                if not bucket_shard_id in gens:
+                if bucket_shard_id not in gens:
                     gens[bucket_shard_id] = si.sync_objs(self.sync, bucket, objs_per_bucket)
 
                 print 'shard_id', shard.shard_id, 'len(gens)', len(gens)
