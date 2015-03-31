@@ -461,7 +461,7 @@ class BILogIter(object):
 
         return ObjectEntry(k, e['timestamp'], e['op_tag'])
 
-    def iterate(self, squash = True):
+    def iterate(self, squash=True):
         max_entries = 1000
 
         marker = self.marker or ''
@@ -484,7 +484,7 @@ class BILogIter(object):
             if e['state'] == 'complete':
                 instance = e['instance'] or None
                 key = (e['object'], instance)
-                if keys.get(key) == None:
+                if keys.get(key) is None:
                     l.insert(0, e)
                     keys[key] = True
 
