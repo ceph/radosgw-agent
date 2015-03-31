@@ -807,8 +807,6 @@ The commands are:
         else:
             src_buckets = [args.bucket_name]
 
-        max_entries = 1000
-
         for bucket, bucket_id, shard, marker, bound in self.zone.iterate_diff(src_buckets):
             print dump_json({'bucket': bucket, 'bucket_id': bucket_id, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
 
