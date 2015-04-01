@@ -376,6 +376,10 @@ class DataWorkerIncremental(IncrementalMixin, DataWorker):
 
         new_retries = []
         for bucket_instance in bucket_instances.union(retries):
+            if ':' not in bucket_instance:
+                # it's just a plain bucket from an old version of the agent
+                bucket_instance = self.get_bucket_instance(bucket_instance)
+
             bound = client.get_worker_bound(
                 self.dest_conn,
                 'bucket-index',
