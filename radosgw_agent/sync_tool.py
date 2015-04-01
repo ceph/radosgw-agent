@@ -652,7 +652,6 @@ class ShardIter(object):
         (list_pos, inc_pos) = parse_bound_marker(start_marker, self.shard.bound)
 
         print 'marker=', get_list_marker(list_pos, inc_pos)
-        # print 'start timestamp=',
 
         if list_pos is not None:
             # no bound existing, list all objects
@@ -771,7 +770,11 @@ class Zone(object):
                 except:
                     marker = None
 
-                if markers[shard.shard_id] != bound:
+                if not marker or marker == '':
+                    # an empty bucket
+                    continue
+
+                if marker != bound:
                     yield buck, buck.bucket_instance, shard, marker, bound
 
     def sync_data(self, src_buckets):
