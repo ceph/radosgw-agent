@@ -656,7 +656,7 @@ class ShardIter(object):
 
         if list_pos is not None:
             # no bound existing, list all objects
-            for obj in client.list_objects_in_bucket(self.shard.sync_work.src_conn, self.shard.bucket, shard_id=self.shard.shard_id):
+            for obj in client.list_objects_in_bucket(self.shard.sync_work.src_conn, self.shard.bucket, shard_id=self.shard.shard_id, marker=list_pos):
                 marker = get_list_marker(obj.name, inc_pos)
                 print 'marker=', marker
                 yield (ObjectEntry(obj, obj.last_modified, obj.RgwxTag), marker)

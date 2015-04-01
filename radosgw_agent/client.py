@@ -203,7 +203,7 @@ def get_bucket_list(connection):
 
 
 @boto_call
-def list_objects_in_bucket(connection, bucket_name, shard_id=-1):
+def list_objects_in_bucket(connection, bucket_name, shard_id=-1, marker=None):
     versioned = config['use_versioning']
     # use the boto library to do this
     bucket = connection.get_bucket(bucket_name)
@@ -212,7 +212,7 @@ def list_objects_in_bucket(connection, bucket_name, shard_id=-1):
     if shard_id >= 0:
         headers = {'Rgwx-Shard-Id': shard_id}
     try:
-        for key in list_call(headers=headers):
+        for key in list_call(headers=headers, marker=marker):
             yield key
     except boto.exception.S3ResponseError as e:
         # since this is a generator, the exception will be raised when
