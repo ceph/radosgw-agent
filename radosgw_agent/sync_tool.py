@@ -947,10 +947,13 @@ The commands are:
         parser = argparse.ArgumentParser(
             description='Sync bucket / object',
             usage='radosgw-sync data_sync <bucket_name>/<key> [<args>]')
-        parser.add_argument('source')
+        parser.add_argument('source', nargs='?')
         args = parser.parse_args(self.remaining[1:])
 
-        target = args.source.split('/', 1)
+        if args.source:
+            target = args.source.split('/', 1)
+        else:
+            target = ''
 
         if len(target) == 0:
             self.zone.sync_data(client.get_bucket_list(self.src_conn))
