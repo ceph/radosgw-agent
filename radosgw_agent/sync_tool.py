@@ -678,7 +678,7 @@ class ShardIter(object):
             entry = obj.obj_entry
             log.info('sync bucket={b} object={o}'.format(b=bucket, o=entry.key))
 
-            print 'sync obj={o}, marker={m}'.format(o=entry.key, m=marker)
+            print 'sync obj={o}, marker={m} last-modified={l}'.format(o=entry.key, m=marker, l=entry.mtime)
 
             ret = obj.sync()
             if ret is False:
