@@ -718,36 +718,6 @@ class Object(object):
 
         print dump_json(entries)
 
-class Zone:
-    def __init__(self, sync):
-        self.sync = sync
-
-    def iterate_diff(self, src_buckets):
-        for b in src_buckets:
-            buck = Bucket(b, -1, self.sync)
-
-            markers = buck.get_source_markers()
-
-            for (shard_id, instance) in buck.iterate_shards():
-                try:
-                    bound = buck.get_bound(instance)['marker']
-                except:
-                    bound = None
-
-                try:
-                    marker = markers[shard_id]
-                except:
-                    marker = None
-
-                if markers[shard_id] != bound:
-                    yield b, shard_id, marker, bound
-
-    def iterate_diff_objects(self, bucket, shard_id, marker, bound):
-        if not bound:
-            for obj in client.list_objects_in_bucket(self.sync.src_conn, bucket, shard_id=shard_id):
-                yield obj
-
-
 
 class Zone(object):
     def __init__(self, sync):
@@ -812,6 +782,11 @@ class Zone(object):
 
                     if len(gens) < concurrent_buckets:
                         break
+
+    def iterate_diff_objects(self, bucket, shard_id, marker, bound):
+        if not bound:
+            for obj in client.list_objects_in_bucket(self.sync.src_conn, bucket, shard_id=shard_id):
+                yield obj
 
 
 
