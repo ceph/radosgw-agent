@@ -294,15 +294,18 @@ def is_versioned(obj):
     if hasattr(obj, 'versioned'):
         return obj.versioned
 
-    if not hasattr(obj, 'VersionedEpoch'):
+    if hasattr(obj, 'VersionedEpoch'):
+        if getattr(obj, 'VersionedEpoch', 0) == 0:
+            return False
         # overly paranoid here, an object that is not versioned should *never*
         # have a `VersionedEpoch` attribute
         if getattr(obj, 'version_id', None):
             if obj.version_id is None:
                 return False
             return True  # probably will never get here
-        return False
-    return True
+        return True
+
+    return False
 
 
 def sync_object_intra_region(connection, bucket_name, obj, src_zone,
