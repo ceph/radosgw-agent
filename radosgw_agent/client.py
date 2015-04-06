@@ -299,11 +299,12 @@ def is_versioned(obj):
             return False
         # overly paranoid here, an object that is not versioned should *never*
         # have a `VersionedEpoch` attribute
+        return True
+    else:
         if getattr(obj, 'version_id', None):
             if obj.version_id is None:
                 return False
             return True  # probably will never get here
-        return True
 
     return False
 
