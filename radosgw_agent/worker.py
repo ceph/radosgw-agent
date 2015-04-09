@@ -266,6 +266,22 @@ class DataWorker(Worker):
 
         return True
 
+    def delete_object(self, bucket, obj, mtime):
+        log.debug('syncing object %s/%s', bucket, obj.name)
+        self.op_id += 1
+        local_op_id = self.local_lock_id + ':' +  str(self.op_id)
+
+        try:
+            client.delete_object(self.dest_conn, bucket, obj, mtime)
+        except NotFound:
+            log.debug('object "%s/%s" not found', bucket, obj.name)
+        except Exception as error:
+            msg = 'encountered an error during sync'
+            dev_log.warn(msg, exc_info=True)
+            log.warning('%s: %s' % (msg, error))
+
+        return True
+
     def wait_for_object(self, bucket, obj, until, local_op_id):
         while time.time() < until:
             try:

@@ -404,6 +404,10 @@ class SyncToolDataSync(object):
         if not self.worker.sync_object(bucket, obj):
             log.info('failed to sync {b}/{o}'.format(b=bucket, o=obj))
 
+    def delete_object(self, bucket, obj, mtime):
+        if not self.worker.delete_object(bucket, obj, mtime):
+            log.info('failed to delete {b}/{o}'.format(b=bucket, o=obj))
+
     def get_bucket_instance(self, bucket):
         return self.worker.get_bucket_instance(bucket)
 
@@ -599,7 +603,7 @@ class BILogIter(object):
                     keys[key] = True
 
         for e in l:
-            yield (BILogIter.entry_to_obj(e), e.get('op_id'))
+            yield (BILogIter.entry_to_obj(e), e.get('op_id'), e.get('op'))
 
 
 def get_value_map(s):
@@ -658,13 +662,13 @@ class ShardIter(object):
             for obj in client.list_objects_in_bucket(self.shard.sync_work.src_conn, self.shard.bucket, shard_id=self.shard.shard_id, marker=list_pos):
                 marker = get_list_marker(obj.name, inc_pos)
                 print 'marker=', marker
-                yield (ObjectEntry(obj, obj.last_modified, obj.RgwxTag), marker)
+                yield (ObjectEntry(obj, obj.last_modified, obj.RgwxTag), marker, 'write')
 
         # now continue from where we last stopped
         li = BILogIter(self.shard, inc_pos)
-        for (e, marker) in li.iterate():
-            print 'marker=', marker
-            yield (e, marker)
+        for (e, marker, op) in li.iterate():
+            print 'marker=', marker, 'op=', op
+            yield (e, marker, op)
 
     def sync_objs(self, sync, bucket, max_entries):
         retries = []
@@ -673,14 +677,17 @@ class ShardIter(object):
 
         count = 0
 
-        for (obj, marker) in self.iterate_diff_objects():
+        for (obj, marker, op) in self.iterate_diff_objects():
             obj = Object(bucket, obj, sync)
             entry = obj.obj_entry
             log.info('sync bucket={b} object={o}'.format(b=bucket, o=entry.key))
 
-            print 'sync obj={o}, marker={m} last-modified={l}'.format(o=entry.key, m=marker, l=entry.mtime)
+            log.info('sync obj={o}, marker={m} last-modified={l}'.format(o=entry.key, m=marker, l=entry.mtime))
 
-            ret = obj.sync()
+            if op == 'del':
+                ret = obj.delete()
+            else:
+                ret = obj.sync()
             if ret is False:
                 log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=entry.key))
                 retries.append(entry.key)
@@ -708,6 +715,13 @@ class Object(object):
     def sync(self):
         try:
             self.sync_work.sync_object(self.bucket, self.obj_entry.key)
+            return True
+        except:
+            return False
+
+    def delete(self):
+        try:
+            self.sync_work.delete_object(self.bucket, self.obj_entry.key, self.obj_entry.mtime)
             return True
         except:
             return False
@@ -963,7 +977,7 @@ The commands are:
 
             si = ShardIter(shard)
 
-            for (obj, marker) in si.iterate_diff_objects():
+            for (obj, marker, op) in si.iterate_diff_objects():
                 print obj, marker
 
 

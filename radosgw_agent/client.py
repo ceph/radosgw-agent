@@ -248,22 +248,30 @@ def mark_delete_object(connection, bucket_name, obj, params=None):
                    expect_json=False)
 
 @boto_call
-def delete_versioned_object(connection, bucket_name, obj):
+def delete_versioned_object(connection, bucket_name, obj, mtime):
     """
     Perform a delete on a versioned object, the requirements for these types
     of requests is to be able to pass the ``versionID`` as a query argument
     """
     # if obj.delete_marker is False we should not delete this and we shouldn't
     # have been called, so return without doing anything
-    if getattr(obj, 'delete_marker', False) is False:
-        log.info('obj: %s has `delete_marker=False`, will skip' % obj.name)
-        return
+    # if getattr(obj, 'delete_marker', False) is False:
+    #     log.info('obj: %s has `delete_marker=False`, will skip' % obj.name)
+    #     return
 
     params = {}
 
-    params['rgwx-version-id'] = obj.version_id
-    params['rgwx-versioned-epoch'] = obj.VersionedEpoch
-    params['versionID'] = obj.version_id
+    if getattr(obj, 'version_id', None) is not None:
+        params['rgwx-version-id'] = obj.version_id
+        params['versionID'] = obj.version_id
+
+    if getattr(obj, 'VersionedEpoch', None) is not None:
+        params['rgwx-versioned-epoch'] = obj.VersionedEpoch
+
+    headers = {}
+    if mtime is not None:
+        params['no-precondition-error'] = 'true'
+        headers['X-Amz-Delete-If-Unmodified-Since'] = mtime
 
     path = u'{bucket}/{object}'.format(
         bucket=bucket_name,
@@ -272,18 +280,13 @@ def delete_versioned_object(connection, bucket_name, obj):
 
     return request(connection, 'delete', path,
                    params=params,
+                   headers=headers,
                    expect_json=False)
 
 
 @boto_call
-def delete_object(connection, bucket_name, obj):
-    if is_versioned(obj):
-        log.debug('performing a delete for versioned obj: %s' % obj.name)
-        delete_versioned_object(connection, bucket_name, obj)
-    else:
-        bucket = connection.get_bucket(bucket_name)
-        bucket.delete_key(obj.name)
-
+def delete_object(connection, bucket_name, obj, mtime=None):
+    delete_versioned_object(connection, bucket_name, obj, mtime)
 
 def is_versioned(obj):
     """
