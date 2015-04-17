@@ -414,7 +414,7 @@ def num_log_shards(connection, shard_type):
 
 
 def set_worker_bound(connection, type_, marker, timestamp,
-                     daemon_id, id_, data=None, sync_type='incremental'):
+                     daemon_id, id_, data=None, sync_type='incremental', key=None):
     """
 
     :param sync_type: The type of synchronization that should be attempted by
@@ -422,46 +422,55 @@ def set_worker_bound(connection, type_, marker, timestamp,
     """
     if data is None:
         data = []
-    key = _id_name(type_)
     boto.log.debug('set_worker_bound: data = %r', data)
-    return request(
-        connection, 'post', 'admin/replica_log',
-        params={
+    params={
             'type': type_,
-            key: id_,
             'marker': marker,
             'time': timestamp,
             'daemon_id': daemon_id,
             'sync-type': sync_type,
-            },
+            }
+    if id_ is not None:
+        params[_id_name(type_)] = id_
+    if key is not None:
+        params['key'] = key
+    return request(
+        connection, 'post', 'admin/replica_log',
+        params=params,
         data=json.dumps(data),
         special_first_param='work_bound',
         )
 
 
-def del_worker_bound(connection, type_, daemon_id, id_):
-    key = _id_name(type_)
+def del_worker_bound(connection, type_, daemon_id, id_, key = None):
+    params={
+        'type': type_,
+        'daemon_id': daemon_id,
+        }
+    if id_ is not None:
+        params[_id_name(type_)] = id_
+    if key is not None:
+        params['key'] = key
     return request(
         connection, 'delete', 'admin/replica_log',
-        params={
-            'type': type_,
-            key: id_,
-            'daemon_id': daemon_id,
-            },
+        params=params,
         special_first_param='work_bound',
         expect_json=False,
         )
 
 
-def get_worker_bound(connection, type_, id_, init_if_not_found=True):
-    key = _id_name(type_)
+def get_worker_bound(connection, type_, id_, init_if_not_found=True, key = None):
+    params={
+        'type': type_,
+        }
+    if id_ is not None:
+        params[_id_name(type_)] = id_
+    if key is not None:
+        params['key'] = key
     try:
         out = request(
             connection, 'get', 'admin/replica_log',
-            params={
-                'type': type_,
-                key: id_,
-                },
+            params=params,
             special_first_param='bounds',
             )
         dev_log.debug('get_worker_bound returned: %r', out)

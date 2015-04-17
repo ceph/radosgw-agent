@@ -22,6 +22,7 @@ from radosgw_agent import config
 from radosgw_agent import worker
 from radosgw_agent.util import string
 from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
+from radosgw_agent.constants import DEFAULT_TIME
 
 log = logging.getLogger(__name__)
 
@@ -732,12 +733,83 @@ class Object(object):
 
         print dump_json(entries)
 
+class BucketState(object):
+    def __init__(self, bucket, shard, marker, bound):
+        self.bucket = bucket
+        self.shard = shard
+        self.marker = marker
+        self.bound = bound
 
-class Zone(object):
-    def __init__(self, sync):
+class ZoneFullSyncState(object):
+    def __init__(self, sync, zone):
         self.sync = sync
+        self.zone = zone
+        self.marker = {}
+        self.status = self.get_full_sync_status()
 
-    def iterate_diff(self, src_buckets):
+
+    def get_full_sync_status(self):
+        cur_bound = client.get_worker_bound(
+                        self.sync.dest_conn,
+                        'zone-full-sync',
+                        None,
+                        init_if_not_found=False)
+
+        if not cur_bound:
+            self.set_state('init')
+            return self.marker
+
+        self.marker = json.loads(cur_bound['marker'])
+        return self.marker
+
+    def set_state(self, state):
+            self.marker['state'] = state
+            print json.dumps(self.marker)
+            client.set_worker_bound(self.sync.dest_conn, 'zone-full-sync',
+                                    json.dumps(self.marker),
+                                    DEFAULT_TIME, 
+                                    self.sync.worker.daemon_id,
+                                    None)
+
+
+
+class BucketsIterator(object):
+    def __init__(self, sync, zone, bucket_name):
+        self.sync = sync
+        self.zone = zone
+        self.bucket_name = bucket_name
+
+        self.explicit_bucket = bucket_name is not None
+
+        self.fs_state_manager = ZoneFullSyncState(sync, zone)
+        self.fs_state = self.fs_state_manager.get_full_sync_status()
+
+    def build_full_sync_work(self):
+        log.info('building full data sync work')
+        for bucket_name in client.get_bucket_list(self.sync.src_conn):
+                marker = ''
+                client.set_worker_bound(self.sync.dest_conn,
+                                    'zone.full_data_sync',
+                                    marker,
+                                    DEFAULT_TIME,
+                                    self.sync.worker.daemon_id,
+                                    0,
+                                    data=None,
+                                    key=bucket_name)
+                log.info('adding bucket to full sync work: {b}'.format(b=bucket_name))
+
+
+    def iterate_dirty_buckets(self):
+        if not self.explicit_bucket:
+            cur_state = self.fs_state['state']
+            if cur_state == 'init':
+                self.build_full_sync_work()
+                self.fs_state_manager.set_state('full-sync')
+            else:
+                assert False
+        else:
+            src_buckets = [self.bucket_name]
+
         for b in src_buckets:
             buck = Bucket(b, -1, self.sync)
 
@@ -759,21 +831,43 @@ class Zone(object):
                     continue
 
                 if marker != bound:
-                    yield buck, buck.bucket_instance, shard, marker, bound
+                    yield BucketState(buck, shard, marker, bound)
 
-    def sync_data(self, src_buckets):
+class Zone(object):
+    def __init__(self, sync):
+        self.sync = sync
+
+    def set_full_sync_bound_entry(self, bucket_name):
+        return client.set_worker_bound(self.sync_work.dest_conn,
+                                    'zone-full-sync',
+                                    marker,
+                                    timestamp,
+                                    self.sync_work.worker.daemon_id,
+                                    self.shard_instance,
+                                    data=data)
+
+    def iterate_diff(self, bi):
+        for bs in bi.iterate_dirty_buckets():
+            yield bs
+
+    def sync_data(self, bi):
         gens = {}
 
         objs_per_bucket = 10
         concurrent_buckets = 2
 
         while True:
-            for bucket, bucket_id, shard, marker, bound in self.iterate_diff(src_buckets):
-                print dump_json({'bucket': bucket.bucket, 'bucket_id': bucket_id, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
+            for bs in self.iterate_diff(bi):
+                bucket = bs.bucket
+                shard = bs.shard
+                marker = bs.marker
+                bound = bs.bound
+
+                print dump_json({'bucket': bucket.bucket, 'bucket_instance': bucket_instance, 'shard_id': bucket_state.shard.shard_id, 'marker': marker, 'bound': bound})
 
                 si = ShardIter(shard)
 
-                bucket_shard_id = bucket_id + ':' + str(shard.shard_id)
+                bucket_shard_id = bucket_instance + ':' + str(shard.shard_id)
 
                 bucket.sync_meta()
 
@@ -801,7 +895,6 @@ class Zone(object):
         if not bound:
             for obj in client.list_objects_in_bucket(self.sync.src_conn, bucket, shard_id=shard_id):
                 yield obj
-
 
 
 class SyncToolCommand(object):
@@ -945,7 +1038,7 @@ The commands are:
             target = ''
 
         if len(target) == 0:
-            self.zone.sync_data(client.get_bucket_list(self.src_conn))
+            self.zone.sync_data(BucketsIterator(self.sync, self.zone, None)) # client.get_bucket_list(self.src_conn))
         elif len(target) == 1:
             bucket = target[0]
             self.zone.sync_data([bucket])
@@ -967,20 +1060,17 @@ The commands are:
         parser.add_argument('bucket_name', nargs='?')
         args = parser.parse_args(self.remaining[1:])
 
-        if not args.bucket_name:
-            src_buckets = client.get_bucket_list(self.src_conn)
-        else:
-            src_buckets = [args.bucket_name]
+        bi = BucketsIterator(self.sync, self.zone, args.bucket_name)
 
-        for bucket, bucket_id, shard, marker, bound in self.zone.iterate_diff(src_buckets):
-            print dump_json({'bucket': bucket.bucket, 'bucket_id': bucket_id, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
+        for bs in bi.iterate_dirty_buckets():
+            bucket = bs.bucket
 
-            si = ShardIter(shard)
+            print dump_json({'bucket': bucket.bucket, 'bucket_instance': bucket.bucket_instance, 'shard_id': bs.shard.shard_id, 'marker': bs.marker, 'bound': bs.bound})
+
+            si = ShardIter(bs.shard)
 
             for (obj, marker, op) in si.iterate_diff_objects():
                 print obj, marker
-
-
 
     def get_bucket_bounds(self, bucket):
         print dump_json({'src': src_buckets, 'dest': dest_buckets})
