@@ -744,7 +744,8 @@ class ZoneFullSyncState(object):
     def __init__(self, sync, zone):
         self.sync = sync
         self.zone = zone
-        self.marker = {}
+        self.num_shards = 128
+        self.marker = { 'num_shards': self.num_shards }
         self.status = self.get_full_sync_status()
 
 
@@ -771,6 +772,14 @@ class ZoneFullSyncState(object):
                                     self.sync.worker.daemon_id,
                                     None)
 
+    def shard_num_for_key(self, key):
+        key = key.encode('utf8')
+        hash_val = 0
+        for char in key:
+            c = ord(char)
+            hash_val = ((hash_val + (c << 4) + (c >> 4)) * 11) % 7877
+        return hash_val % self.num_shards
+
 
 
 class BucketsIterator(object):
@@ -788,12 +797,13 @@ class BucketsIterator(object):
         log.info('building full data sync work')
         for bucket_name in client.get_bucket_list(self.sync.src_conn):
                 marker = ''
+                shard_id = self.fs_state_manager.shard_num_for_key(bucket_name)
                 client.set_worker_bound(self.sync.dest_conn,
                                     'zone.full_data_sync',
                                     marker,
                                     DEFAULT_TIME,
                                     self.sync.worker.daemon_id,
-                                    0,
+                                    shard_id,
                                     data=None,
                                     key=bucket_name)
                 log.info('adding bucket to full sync work: {b}'.format(b=bucket_name))
@@ -836,15 +846,6 @@ class BucketsIterator(object):
 class Zone(object):
     def __init__(self, sync):
         self.sync = sync
-
-    def set_full_sync_bound_entry(self, bucket_name):
-        return client.set_worker_bound(self.sync_work.dest_conn,
-                                    'zone-full-sync',
-                                    marker,
-                                    timestamp,
-                                    self.sync_work.worker.daemon_id,
-                                    self.shard_instance,
-                                    data=data)
 
     def iterate_diff(self, bi):
         for bs in bi.iterate_dirty_buckets():
