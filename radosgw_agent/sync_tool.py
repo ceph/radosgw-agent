@@ -793,6 +793,9 @@ class BucketsIterator(object):
         self.fs_state_manager = ZoneFullSyncState(sync, zone)
         self.fs_state = self.fs_state_manager.get_full_sync_status()
 
+    def get_full_sync_state(self):
+        return self.fs_state
+
     def build_full_sync_work(self):
         log.info('building full data sync work')
         for bucket_name in client.get_bucket_list(self.sync.src_conn):
@@ -851,8 +854,12 @@ class Zone(object):
         for bs in bi.iterate_dirty_buckets():
             yield bs
 
-    def sync_data(self, bi):
+    def sync_data(self, bi, restart):
         gens = {}
+
+        if restart:
+            self.fs_state_manager.set_state('init')
+
 
         objs_per_bucket = 10
         concurrent_buckets = 2
@@ -1001,25 +1008,27 @@ The commands are:
             description='Get sync status of bucket or object',
             usage='radosgw-sync status <bucket_name>/<key> [<args>]')
         parser.add_argument('--shard-id', type=int, default=-1)
-        parser.add_argument('source')
+        parser.add_argument('source', nargs='?')
         args = parser.parse_args(self.remaining[1:])
 
-        target = args.source.split('/', 1)
+        target = ''
+        if args.source is not None:
+            target = args.source.split('/', 1)
 
-        assert len(target) > 0
-
-        bucket = target[0]
-
-
-        b = Bucket(bucket, args.shard_id, self.sync)
-
-        if len(target) == 1:
+        if len(target) == 0:
+            bi = BucketsIterator(self.sync, self.zone, None)
+            print dump_json({'full-sync-state': bi.get_full_sync_state()})
+        elif len(target) == 1:
+            bucket = target[0]
+            b = Bucket(bucket, args.shard_id, self.sync)
             log.info('status bucket={b}'.format(b=bucket))
 
             bounds = b.get_bucket_bounds()
             markers = b.get_source_markers()
             print dump_json({'source': markers, 'dest': bounds})
         else:
+            bucket = target[0]
+            b = Bucket(bucket, args.shard_id, self.sync)
             obj_name = target[1]
             obj = Object(bucket, obj_name, self.sync)
             log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
@@ -1031,6 +1040,7 @@ The commands are:
             description='Sync bucket / object',
             usage='radosgw-sync data_sync <bucket_name>/<key> [<args>]')
         parser.add_argument('source', nargs='?')
+        parser.add_argument('--restart', action='store_true')
         args = parser.parse_args(self.remaining[1:])
 
         if args.source:
@@ -1039,7 +1049,7 @@ The commands are:
             target = ''
 
         if len(target) == 0:
-            self.zone.sync_data(BucketsIterator(self.sync, self.zone, None)) # client.get_bucket_list(self.src_conn))
+            self.zone.sync_data(BucketsIterator(self.sync, self.zone, None), args.restart) # client.get_bucket_list(self.src_conn))
         elif len(target) == 1:
             bucket = target[0]
             self.zone.sync_data([bucket])
