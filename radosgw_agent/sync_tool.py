@@ -752,7 +752,7 @@ class ZoneFullSyncState(object):
     def get_full_sync_status(self):
         cur_bound = client.get_worker_bound(
                         self.sync.dest_conn,
-                        'zone-full-sync',
+                        'zone.full_data_sync.meta',
                         None,
                         init_if_not_found=False)
 
@@ -766,7 +766,7 @@ class ZoneFullSyncState(object):
     def set_state(self, state):
             self.marker['state'] = state
             print json.dumps(self.marker)
-            client.set_worker_bound(self.sync.dest_conn, 'zone-full-sync',
+            client.set_worker_bound(self.sync.dest_conn, 'zone.full_data_sync.meta',
                                     json.dumps(self.marker),
                                     DEFAULT_TIME, 
                                     self.sync.worker.daemon_id,
@@ -779,6 +779,14 @@ class ZoneFullSyncState(object):
             c = ord(char)
             hash_val = ((hash_val + (c << 4) + (c >> 4)) * 11) % 7877
         return hash_val % self.num_shards
+
+
+    def iterate_full_sync_buckets(self):
+        for shard_id in xrange(self.num_shards):
+            info = client.list_worker_bound(self.sync.dest_conn, 'zone.full_data_sync', shard_id)
+            if info is not None:
+                for k in info['keys']:
+                    yield k
 
 
 
@@ -811,13 +819,16 @@ class BucketsIterator(object):
                                     key=bucket_name)
                 log.info('adding bucket to full sync work: {b}'.format(b=bucket_name))
 
-
     def iterate_dirty_buckets(self):
         if not self.explicit_bucket:
             cur_state = self.fs_state['state']
             if cur_state == 'init':
                 self.build_full_sync_work()
                 self.fs_state_manager.set_state('full-sync')
+                cur_state = 'full-sync'
+
+            if cur_state == 'full-sync':
+                src_buckets = self.fs_state_manager.iterate_full_sync_buckets()
             else:
                 assert False
         else:
@@ -858,7 +869,7 @@ class Zone(object):
         gens = {}
 
         if restart:
-            self.fs_state_manager.set_state('init')
+            bi.fs_state_manager.set_state('init')
 
 
         objs_per_bucket = 10
@@ -871,11 +882,11 @@ class Zone(object):
                 marker = bs.marker
                 bound = bs.bound
 
-                print dump_json({'bucket': bucket.bucket, 'bucket_instance': bucket_instance, 'shard_id': bucket_state.shard.shard_id, 'marker': marker, 'bound': bound})
+                print dump_json({'bucket': bucket.bucket, 'bucket_instance': bucket.bucket_instance, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
 
                 si = ShardIter(shard)
 
-                bucket_shard_id = bucket_instance + ':' + str(shard.shard_id)
+                bucket_shard_id = bucket.bucket_instance + ':' + str(shard.shard_id)
 
                 bucket.sync_meta()
 
@@ -1052,7 +1063,7 @@ The commands are:
             self.zone.sync_data(BucketsIterator(self.sync, self.zone, None), args.restart) # client.get_bucket_list(self.src_conn))
         elif len(target) == 1:
             bucket = target[0]
-            self.zone.sync_data([bucket])
+            self.zone.sync_data(BucketsIterator(self.sync, self.zone, bucket), args.restart)
             log.info('sync bucket={b}'.format(b=bucket))
         else:
             bucket = target[0]

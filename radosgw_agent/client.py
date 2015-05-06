@@ -495,6 +495,29 @@ def get_worker_bound(connection, type_, id_, init_if_not_found=True, key = None)
     out['retries'] = retries
     return out
 
+def list_worker_bound(connection, type_, id_):
+    params={
+        'type': type_,
+        }
+    if id_ is not None:
+        params[_id_name(type_)] = id_
+    params['list-keys'] = True
+    try:
+        out = request(
+            connection, 'get', 'admin/replica_log',
+            params=params,
+            special_first_param='bounds',
+            )
+        dev_log.debug('get_worker_bound returned: %r', out)
+    except exc.NotFound:
+        dev_log.debug('no worker bound found for %s "%s"',
+                      type_, id_)
+        # if no worker bounds have been set, start from the beginning
+        # returning fallback, default values
+        return None
+
+    return out
+
 
 class Zone(object):
     def __init__(self, zone_info):
