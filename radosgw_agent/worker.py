@@ -218,7 +218,7 @@ class DataWorker(Worker):
         self.object_sync_timeout = kwargs.get('object_sync_timeout', 60 * 60 * 60)
         self.daemon_id = kwargs['daemon_id']
 
-    def sync_object(self, bucket, obj):
+    def sync_object(self, bucket, bucket_id, obj):
         log.debug('syncing object %s/%s', bucket, obj.name)
         self.op_id += 1
         local_op_id = self.local_lock_id + ':' +  str(self.op_id)
@@ -226,7 +226,9 @@ class DataWorker(Worker):
 
         try:
             until = time.time() + self.object_sync_timeout
-            client.sync_object_intra_region(self.dest_conn, bucket, obj,
+            client.sync_object_intra_region(self.dest_conn, bucket,
+                                            bucket_id,
+                                            obj,
                                             self.src.zone.name,
                                             self.daemon_id,
                                             local_op_id)

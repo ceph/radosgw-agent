@@ -401,8 +401,8 @@ class SyncToolDataSync(object):
         self.src_conn = src_conn
         self.worker = worker
 
-    def sync_object(self, bucket, obj):
-        if not self.worker.sync_object(bucket, obj):
+    def sync_object(self, bucket, bucket_id, obj):
+        if not self.worker.sync_object(bucket, bucket_id, obj):
             log.info('failed to sync {b}/{o}'.format(b=bucket, o=obj))
 
     def delete_object(self, bucket, obj, mtime):
@@ -470,10 +470,10 @@ def meta_ver(meta):
         return ''
 
 class Bucket(object):
-    def __init__(self, bucket, shard_id, sync_work):
+    def __init__(self, bucket_name, shard_id, sync_work):
         self.sync_work = sync_work
-        self.bucket = bucket
-        self.bucket_instance =  self.get_bucket_instance(bucket)
+        self.bucket_name = bucket_name
+        self.bucket_instance =  self.get_bucket_instance(bucket_name)
         self.meta = self.get_bucket_instance_metadata(self.sync_work.src_conn, self.bucket_instance)
         self.shard_id = shard_id
 
@@ -491,9 +491,9 @@ class Bucket(object):
 
         log.debug('num_shards={n}'.format(n=self.num_shards))
 
-    def get_bucket_instance(self, bucket):
-        metadata = client.get_metadata(self.sync_work.src_conn, 'bucket', bucket)
-        return bucket + ':' + metadata['data']['bucket']['bucket_id']
+    def get_bucket_instance(self, bucket_name):
+        metadata = client.get_metadata(self.sync_work.src_conn, 'bucket', bucket_name)
+        return bucket_name + ':' + metadata['data']['bucket']['bucket_id']
 
     def get_bucket_instance_metadata(self, conn, bucket_instance):
         metadata = client.get_metadata(conn, 'bucket.instance', bucket_instance)
@@ -508,12 +508,12 @@ class Bucket(object):
 
     def iterate_shards(self):
         if self.num_shards <= 0:
-            yield Shard(self.sync_work, self.bucket, -1, self.bucket_instance)
+            yield Shard(self.sync_work, self.bucket_name, -1, self.bucket_instance)
         elif self.shard_id >= 0:
-            yield Shard(self.sync_work, self.bucket, self.shard_id, self.bucket_instance + ':' + str(self.shard_id))
+            yield Shard(self.sync_work, self.bucket_name, self.shard_id, self.bucket_instance + ':' + str(self.shard_id))
         else:
             for x in xrange(self.num_shards):
-                yield Shard(self.sync_work, self.bucket, x, self.bucket_instance + ':' + str(x))
+                yield Shard(self.sync_work, self.bucket_name, x, self.bucket_instance + ':' + str(x))
 
     def get_bound(self, instance):
         return client.get_worker_bound(
@@ -672,6 +672,7 @@ class ShardIter(object):
             yield (e, marker, op)
 
     def sync_objs(self, sync, bucket, max_entries):
+        bucket_name = bucket.bucket_name
         retries = []
         need_to_set_bound = False
         marker = ''
@@ -681,7 +682,7 @@ class ShardIter(object):
         for (obj, marker, op) in self.iterate_diff_objects():
             obj = Object(bucket, obj, sync)
             entry = obj.obj_entry
-            log.info('sync bucket={b} object={o}'.format(b=bucket, o=entry.key))
+            log.info('sync bucket={b}:{i} object={o}'.format(b=bucket_name, i=bucket.bucket_instance, o=entry.key))
 
             log.info('sync obj={o}, marker={m} last-modified={l}'.format(o=entry.key, m=marker, l=entry.mtime))
 
@@ -690,7 +691,7 @@ class ShardIter(object):
             else:
                 ret = obj.sync()
             if ret is False:
-                log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=entry.key))
+                log.info('sync bucket={b}:{i} object={o} failed'.format(b=bucket, i=bucket.bucket_instance, o=entry.key))
                 retries.append(entry.key)
 
             need_to_set_bound = True
@@ -708,14 +709,15 @@ class ShardIter(object):
 
 
 class Object(object):
-    def __init__(self, bucket, obj_entry, sync_work):
+    def __init__(self, bucket,  obj_entry, sync_work):
         self.sync_work = sync_work
         self.bucket = bucket
         self.obj_entry = obj_entry
+        self.bucket_id = self.bucket.get_bucket_instance(bucket.bucket_name)
 
     def sync(self):
         try:
-            self.sync_work.sync_object(self.bucket, self.obj_entry.key)
+            self.sync_work.sync_object(self.bucket.bucket_name, self.bucket_id, self.obj_entry.key)
             return True
         except:
             return False
@@ -728,7 +730,7 @@ class Object(object):
             return False
 
     def status(self):
-        opstate_ret = client.get_op_state(self.sync_work.dest_conn, '', '', self.bucket, self.obj_entry)
+        opstate_ret = client.get_op_state(self.sync_work.dest_conn, '', '', self.bucket.bucket_name, self.obj_entry)
         entries = [OpStateEntry(entry) for entry in opstate_ret]
 
         print dump_json(entries)
@@ -835,7 +837,11 @@ class BucketsIterator(object):
             src_buckets = [self.bucket_name]
 
         for b in src_buckets:
-            buck = Bucket(b, -1, self.sync)
+            print 'bucket=', b
+            try:
+                buck = Bucket(b, -1, self.sync)
+            except NotFound:
+                continue
 
             markers = buck.get_source_markers()
 
@@ -849,6 +855,8 @@ class BucketsIterator(object):
                     marker = markers[shard.shard_id]
                 except:
                     marker = None
+
+                print 'shard_id=', shard.shard_id, 'marker=', marker, 'bound=', bound
 
                 if not marker or marker == '':
                     # an empty bucket
@@ -882,7 +890,7 @@ class Zone(object):
                 marker = bs.marker
                 bound = bs.bound
 
-                print dump_json({'bucket': bucket.bucket, 'bucket_instance': bucket.bucket_instance, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
+                print dump_json({'bucket': bucket.bucket_name, 'bucket_instance': bucket.bucket_instance, 'shard_id': shard.shard_id, 'marker': marker, 'bound': bound})
 
                 si = ShardIter(shard)
 
@@ -891,7 +899,7 @@ class Zone(object):
                 bucket.sync_meta()
 
                 if bucket_shard_id not in gens:
-                    gens[bucket_shard_id] = si.sync_objs(self.sync, bucket.bucket, objs_per_bucket)
+                    gens[bucket_shard_id] = si.sync_objs(self.sync, bucket, objs_per_bucket)
 
                 print 'shard_id', shard.shard_id, 'len(gens)', len(gens)
 
@@ -1041,7 +1049,7 @@ The commands are:
             bucket = target[0]
             b = Bucket(bucket, args.shard_id, self.sync)
             obj_name = target[1]
-            obj = Object(bucket, obj_name, self.sync)
+            obj = Object(bucket, None, obj_name, self.sync)
             log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
 
             obj.status()
@@ -1066,14 +1074,18 @@ The commands are:
             self.zone.sync_data(BucketsIterator(self.sync, self.zone, bucket), args.restart)
             log.info('sync bucket={b}'.format(b=bucket))
         else:
-            bucket = target[0]
+            bucket = Bucket(target[0], -1, self.sync)
             obj_name = target[1]
-            obj = Object(bucket, obj_name, self.sync)
+
+            k = boto.s3.key.Key()
+            k.name = obj_name
+
+            obj = Object(bucket, ObjectEntry(k, None, None), self.sync)
             log.info('sync bucket={b} object={o}'.format(b=bucket, o=obj_name))
 
             ret = obj.sync()
             if ret is False:
-                log.info('sync bucket={b} object={o} failed'.format(b=bucket, o=obj_name))
+                log.info('sync bucket={b} object={o} failed'.format(b=bucket.bucket_name, o=obj_name))
 
     def diff(self):
         parser = argparse.ArgumentParser(

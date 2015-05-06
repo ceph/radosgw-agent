@@ -312,7 +312,7 @@ def is_versioned(obj):
     return False
 
 
-def sync_object_intra_region(connection, bucket_name, obj, src_zone,
+def sync_object_intra_region(connection, bucket_name, bucket_id, obj, src_zone,
                              client_id, op_id):
 
     params = {
@@ -320,6 +320,9 @@ def sync_object_intra_region(connection, bucket_name, obj, src_zone,
         'rgwx-client-id': client_id,
         'rgwx-op-id': op_id,
     }
+
+    if bucket_id is not None:
+        params['rgwx-bucket-instance'] = bucket_id
 
     if is_versioned(obj):
         log.debug('detected obj as versioned: %s' % obj.name)
