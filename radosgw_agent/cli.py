@@ -68,7 +68,6 @@ def parse_args():
         parents=[conf_parser],
         description='Synchronize radosgw installations',
         )
-    parser.set_defaults(**defaults)
     verbosity = parser.add_mutually_exclusive_group(required=False)
     verbosity.add_argument(
         '-v', '--verbose',
@@ -198,6 +197,7 @@ def parse_args():
         default=8080,
         help=argparse.SUPPRESS,
         )
+    parser.set_defaults(**defaults)
     return parser.parse_args(remaining)
 
 
