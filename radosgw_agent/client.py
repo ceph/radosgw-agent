@@ -66,7 +66,7 @@ def parse_endpoint(endpoint):
         raise exc.InvalidProtocol('invalid protocol %r' % url.scheme)
     if not url.hostname:
         raise exc.InvalidHost('no hostname in %r' % endpoint)
-    return Endpoint(url.hostname, url.port, url.scheme == 'https')
+    return Endpoint(url.netloc, url.port, url.scheme == 'https')
 
 code_to_exc = {
     404: exc.NotFound,
