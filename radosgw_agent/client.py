@@ -13,7 +13,7 @@ from boto.s3.connection import S3Connection
 from radosgw_agent import request as aws_request
 from radosgw_agent import config
 from radosgw_agent import exceptions as exc
-from radosgw_agent.util import get_dev_logger
+from radosgw_agent.util import get_dev_logger, network
 from radosgw_agent.constants import DEFAULT_TIME
 from radosgw_agent.exceptions import NetworkError
 
@@ -58,15 +58,53 @@ class Endpoint(object):
         return '{scheme}://{host}:{port}'.format(scheme=scheme,
                                                  host=self.host,
                                                  port=self.port)
+def normalize_netloc(url_obj):
+    """
+    Only needed for IPV6 addresses because ``urlparse`` is so very
+    inconsistent with parsing::
+
+        In [5]: print urlparse('http://[e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922]:8080').hostname
+        e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922
+
+        In [6]: print urlparse('http://e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922').hostname
+        e40
+
+    """
+    netloc = url_obj.netloc
+    try:
+        port = url_obj.port
+    except ValueError:
+        port = None
+
+    if port is not None:
+        # we need to split because we don't want it as part of the URL
+        netloc = url_obj.netloc.split(':%s' % port)[0]
+    if not url_obj.netloc.startswith('[') and not url_obj.netloc.endswith(']'):
+        netloc = '[%s]' % url_obj.netloc
+    return netloc
 
 
 def parse_endpoint(endpoint):
     url = urlparse(endpoint)
+    # IPV6 addresses will not work correctly with urlparse and Endpoint if we
+    # just use netloc as default. IPV4 works with .hostname while IPV6 works
+    # with .netloc
+    # for example an IPV6 address like e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922
+    # would evaluate to 'e40' if we used .hostname
+    try:
+        port = url.port
+    except ValueError:
+        port = None
+
+    if network.is_ipv6(url.netloc):
+        host = normalize_netloc(url)
+    else:
+        host = url.hostname
     if url.scheme not in ['http', 'https']:
         raise exc.InvalidProtocol('invalid protocol %r' % url.scheme)
     if not url.hostname:
         raise exc.InvalidHost('no hostname in %r' % endpoint)
-    return Endpoint(url.netloc, url.port, url.scheme == 'https')
+    return Endpoint(host, port, url.scheme == 'https')
 
 code_to_exc = {
     404: exc.NotFound,
