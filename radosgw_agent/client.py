@@ -2,8 +2,10 @@ import boto
 import functools
 import json
 import logging
+import os
 import random
 import socket
+import sys
 import urllib
 from urlparse import urlparse
 
@@ -58,7 +60,7 @@ class Endpoint(object):
         return '{scheme}://{host}:{port}'.format(scheme=scheme,
                                                  host=self.host,
                                                  port=self.port)
-def normalize_netloc(url_obj):
+def normalize_netloc(url_obj, port):
     """
     Only needed for IPV6 addresses because ``urlparse`` is so very
     inconsistent with parsing::
@@ -69,19 +71,32 @@ def normalize_netloc(url_obj):
         In [6]: print urlparse('http://e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922').hostname
         e40
 
+    In Python 2.6 this situation is even worse, urlparse is completely unreliable for things
+    like looking up a port on an IPV6 url.
     """
     netloc = url_obj.netloc
-    try:
-        port = url_obj.port
-    except ValueError:
-        port = None
-
     if port is not None:
         # we need to split because we don't want it as part of the URL
         netloc = url_obj.netloc.split(':%s' % port)[0]
     if not url_obj.netloc.startswith('[') and not url_obj.netloc.endswith(']'):
         netloc = '[%s]' % url_obj.netloc
     return netloc
+
+
+def detect_ipv6_port(url_obj):
+    netloc = url_obj.netloc
+    try:
+        port = url_obj.port
+    except ValueError:
+        port = None
+
+    # insist on checking the port because urlparse may be lying to us
+    netloc_parts = netloc.split(']:')
+    if len(netloc_parts) == 2:
+        _, port = netloc_parts
+    if port:
+        return int(port)
+    return port
 
 
 def parse_endpoint(endpoint):
@@ -91,13 +106,25 @@ def parse_endpoint(endpoint):
     # with .netloc
     # for example an IPV6 address like e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922
     # would evaluate to 'e40' if we used .hostname
+
+    # this looks repetitive but we don't know yet if we are IPV6
     try:
         port = url.port
     except ValueError:
         port = None
 
     if network.is_ipv6(url.netloc):
-        host = normalize_netloc(url)
+        port = detect_ipv6_port(url)
+        if (sys.version_info[0], sys.version_info[1]) <= (2, 6):
+            log.error(
+                'Python 2.6 does not support IPV6 addresses, cannot continue'
+            )
+            log.error('host can be used instead of raw IPV6 addresses')
+            if os.environ.get('PYTEST') is None:  # don't bail on tests
+                raise RuntimeError(
+                    'IPV6 address was used for endpoint: %s' % endpoint
+                )
+        host = normalize_netloc(url, port)
     else:
         host = url.hostname
     if url.scheme not in ['http', 'https']:
