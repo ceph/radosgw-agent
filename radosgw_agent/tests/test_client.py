@@ -14,6 +14,10 @@ def endpoints():
     return [
         ('http://example.org', 'example.org', 80, False),
         ('https://example.org', 'example.org', 443, True),
+        ('https://[e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922]', '[e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922]', 443, True),
+        ('http://[e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922]', '[e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922]', 80, False),
+        ('http://[e39:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922]:8080', '[e39:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922]', 8080, False),
+        ('http://e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922', '[e40:92be:ab1c:c9c1:3e2e:dbf6:57c6:8922]', 80, False),
         ('https://example.org:8080', 'example.org', 8080, True),
         ('https://example.org:8080/', 'example.org', 8080, True),
         ('http://example.org:81/a/b/c?b#d', 'example.org', 81, False),
@@ -176,6 +180,7 @@ def test_endpoint_port_specified():
     endpoint = client.Endpoint('example.org', 443, True)
     assert endpoint.port == 443
 
+
 def test_endpoint_equality():
     default_port = client.Endpoint('a.org', None, True)
     secure = client.Endpoint('a.org', 443, True)
@@ -183,6 +188,7 @@ def test_endpoint_equality():
     assert default_port == secure
     assert secure == insecure
     assert insecure == default_port
+
 
 def test_endpoint_inequality():
     base = client.Endpoint('a.org', 80, True)
