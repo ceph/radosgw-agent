@@ -1,8 +1,13 @@
 import logging
 import sys
+import os
 
-# this console logging configuration is basically just to be able to see output in
-# tests, and this file gets executed by py.test when it runs, so we get that for free.
+# set an environ variable that tells us that we are really testing
+os.environ['PYTEST'] = '1'
+
+# this console logging configuration is basically just to be able to see output
+# in tests, and this file gets executed by py.test when it runs, so we get that
+# for free.
 
 # Console Logger
 sh = logging.StreamHandler()
