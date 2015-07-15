@@ -1,6 +1,14 @@
 Changelog
 =========
 
+1.2.3
+-----
+15-Jul-2015
+* suppress override of config settings by argparse defaults
+* properly detect ipv6 endpoints
+* add Python 2.7 testing
+
+
 1.2.2
 -----
 27-Apr-2015
