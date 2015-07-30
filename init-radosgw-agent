@@ -79,12 +79,12 @@ case "$1" in
         fi
         ;;
         restart)
-                $0 stop $name
+                $0 stop $config_path
                 if is_running; then
                         echo "Unable to stop, will not attempt to start"
                         exit 1
                 fi
-                $0 start $name
+                $0 start $config_path
         ;;
         status)
                 if is_running; then
