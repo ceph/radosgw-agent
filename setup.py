@@ -26,16 +26,15 @@ setup(
     url="https://github.com/ceph/radosgw-agent",
 
     install_requires=[
-        'setuptools',
         'boto >=2.2.2,<3.0.0',
-        ] + install_requires,
-
+        'PyYAML',
+        'argparse',
+    ],
     test_requires=[
-        'pytest >=2.1.3',
-        'mock >=1.0',
+        'pytest',
+        'mock',
         'httpretty',
-        ],
-
+    ],
     entry_points={
         'console_scripts': [
             'radosgw-agent = radosgw_agent.cli:main',
