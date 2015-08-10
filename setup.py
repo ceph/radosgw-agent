@@ -8,7 +8,11 @@ metadata = dict(
     re.findall(r"__([a-z]+)__\s*=\s*['\"]([^'\"]*)['\"]", module_file))
 
 
-install_requires = []
+install_requires = [
+    'boto >=2.2.2,<3.0.0',
+    'PyYAML',
+]
+
 pyversion = sys.version_info[:2]
 if pyversion < (2, 7) or (3, 0) <= pyversion <= (3, 1):
     install_requires.append('argparse')
@@ -24,15 +28,11 @@ setup(
     license='MIT',
     keywords='radosgw ceph radosgw-agent',
     url="https://github.com/ceph/radosgw-agent",
-
-    install_requires=[
-        'boto >=2.2.2,<3.0.0',
-        'PyYAML',
-        'argparse',
-    ],
+    install_requires=install_requires,
     test_requires=[
         'pytest',
         'mock',
+        'tox',
         'httpretty',
     ],
     entry_points={
