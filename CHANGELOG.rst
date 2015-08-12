@@ -1,6 +1,12 @@
 Changelog
 =========
 
+1.2.4
+-----
+12-Aug-2015
+* Fix invalid references for HttpError in lock.py
+* Fix an issue where pinning of the mock library would make installation fail
+
 1.2.3
 -----
 15-Jul-2015
