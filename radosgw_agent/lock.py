@@ -3,6 +3,7 @@ import threading
 import time
 
 from radosgw_agent import client
+from radosgw_agent import exceptions as exc
 from radosgw_agent.util import get_dev_logger
 
 log = logging.getLogger(__name__)
@@ -95,7 +96,7 @@ class Lock(threading.Thread):
             try:
                 client.unlock_shard(self.conn, self.type, shard_num,
                                     self.zone_id, self.locker_id)
-            except client.HttpError as e:
+            except exc.HttpError as e:
                 log.warn('failed to unlock shard %d in zone %s: %s',
                          shard_num, self.zone_id, e)
             self.last_locked = None
@@ -106,7 +107,7 @@ class Lock(threading.Thread):
                 if self.shard_num is not None:
                     try:
                         self._acquire()
-                    except client.HttpError as e:
+                    except exc.HttpError as e:
                         log.error('locking shard %d in zone %s failed: %s',
                                   self.shard_num, self.zone_id, e)
                         self.failed = True
