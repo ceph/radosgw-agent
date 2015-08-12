@@ -12,10 +12,8 @@ from radosgw_agent.exceptions import HttpError, NotFound, BucketEmpty
 class TestSyncObject(object):
 
     def setup(self):
-        # setup the fake client, but get the exceptions back into place
+        # setup the fake client
         self.client = Mock()
-        self.client.HttpError = HttpError
-        self.client.NotFound = NotFound
 
         self.src = Mock()
         self.src.zone.name = 'Zone Name'
