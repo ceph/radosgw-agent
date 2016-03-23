@@ -8,7 +8,7 @@ Group: Development/Libraries
 BuildArch: noarch
 Requires: python-argparse
 Requires: PyYAML
-Requires: python-boto >= 2.2.2
+Requires: python-boto >= 2.10.0
 Requires: python-boto < 3.0.0
 BuildRequires: python-devel
 BuildRequires: python-setuptools

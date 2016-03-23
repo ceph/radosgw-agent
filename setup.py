@@ -9,7 +9,7 @@ metadata = dict(
 
 
 install_requires = [
-    'boto >=2.2.2,<3.0.0',
+    'boto >=2.10.0,<3.0.0',
     'PyYAML',
 ]
 
