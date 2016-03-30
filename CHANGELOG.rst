@@ -1,6 +1,13 @@
 Changelog
 =========
 
+1.2.5
+-----
+30-Mar-2016
+* Bump the minimum version of boto required to 2.10.0
+* Fix configuration not found error when using init script to restart
+  radosgw-agent
+
 1.2.4
 -----
 12-Aug-2015
