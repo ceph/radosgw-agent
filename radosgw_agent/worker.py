@@ -272,6 +272,9 @@ class DataWorker(Worker):
                                             local_op_id,
                                             bucket, obj)
                 log.debug('op state is %s', state)
+                if not state:
+                    time.sleep(1)
+                    continue
                 state = state[0]['state']
                 if state == 'complete':
                     return
