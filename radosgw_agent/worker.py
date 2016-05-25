@@ -272,6 +272,9 @@ class DataWorker(Worker):
                                             local_op_id,
                                             bucket, obj)
                 log.debug('op state is %s', state)
+                if not state:
+                    time.sleep(1)
+                    continue
                 state = state[0]['state']
                 if state == 'complete':
                     return
@@ -284,6 +287,7 @@ class DataWorker(Worker):
                 raise SyncFailed('object copy state not found')
             except Exception as e:
                 log.debug('error geting op state: %s', e, exc_info=True)
+                log.info('will try to get op state again')
                 time.sleep(1)
         # timeout expired
         raise SyncTimedOut()
