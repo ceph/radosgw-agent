@@ -1,6 +1,12 @@
 Changelog
 =========
 
+1.2.6
+-----
+9-Jun-2016
+* Improve logging when op state is empty when syncing
+* If there is no op state when syncing do not spit out a traceback
+
 1.2.5
 -----
 30-Mar-2016
