@@ -57,6 +57,10 @@ class HttpError(ClientException):
         return self.message
 
 
+class NotModified(HttpError):
+    pass
+
+
 class NotFound(HttpError):
     pass
 

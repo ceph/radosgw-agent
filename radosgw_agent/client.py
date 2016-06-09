@@ -134,6 +134,7 @@ def parse_endpoint(endpoint):
     return Endpoint(host, port, url.scheme == 'https')
 
 code_to_exc = {
+    304: exc.NotModified,
     404: exc.NotFound,
     }
 
