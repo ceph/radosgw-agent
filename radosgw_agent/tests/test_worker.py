@@ -6,7 +6,7 @@ import httpretty
 import re
 
 from radosgw_agent import worker, client
-from radosgw_agent.exceptions import HttpError, NotFound, BucketEmpty, SyncTimedOut
+from radosgw_agent.exceptions import HttpError, NotModified, NotFound, BucketEmpty, SyncTimedOut
 
 
 class TestSyncObject(object):
@@ -22,6 +22,13 @@ class TestSyncObject(object):
         self.obj.name = 'mah-object'
 
     def test_syncs_correctly(self):
+        with patch('radosgw_agent.worker.client'):
+            w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
+            assert w.sync_object('mah-bucket', self.obj) is True
+
+    def test_syncs_correctly_on_not_modified(self):
+        self.client.sync_object_intra_region = Mock(side_effect=NotModified(304, ''))
+
         with patch('radosgw_agent.worker.client'):
             w = worker.DataWorker(None, None, None, self.src, None, daemon_id=1)
             assert w.sync_object('mah-bucket', self.obj) is True
