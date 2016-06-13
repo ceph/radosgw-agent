@@ -1,6 +1,13 @@
 Changelog
 =========
 
+1.2.7
+-----
+13-Jun-2016
+* add rgwx-copy-if-newer param to sync_object_intra_region
+* sync_object should not fail on NotModified
+* add exception for 304 NotModified
+
 1.2.6
 -----
 9-Jun-2016
