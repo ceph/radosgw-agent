@@ -9,7 +9,7 @@ import time
 from radosgw_agent import client
 from radosgw_agent import lock
 from radosgw_agent.util import obj as obj_, get_dev_logger
-from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotFound, BucketEmpty
+from radosgw_agent.exceptions import SkipShard, SyncError, SyncTimedOut, SyncFailed, NotModified, NotFound, BucketEmpty
 from radosgw_agent.constants import DEFAULT_TIME, RESULT_SUCCESS, RESULT_ERROR
 
 log = logging.getLogger(__name__)
@@ -230,6 +230,10 @@ class DataWorker(Worker):
                                             self.src.zone.name,
                                             self.daemon_id,
                                             local_op_id)
+            found = True
+        except NotModified:
+            log.debug('object "%s/%s" found on master and not modified',
+                      bucket, obj.name)
             found = True
         except NotFound:
             log.debug('object "%s/%s" not found on master, deleting from secondary',

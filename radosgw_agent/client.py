@@ -134,6 +134,7 @@ def parse_endpoint(endpoint):
     return Endpoint(host, port, url.scheme == 'https')
 
 code_to_exc = {
+    304: exc.NotModified,
     404: exc.NotFound,
     }
 
@@ -377,6 +378,7 @@ def sync_object_intra_region(connection, bucket_name, obj, src_zone,
         'rgwx-source-zone': src_zone,
         'rgwx-client-id': client_id,
         'rgwx-op-id': op_id,
+        'rgwx-copy-if-newer': 'true',
     }
 
     if is_versioned(obj):
